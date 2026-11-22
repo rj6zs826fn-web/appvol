@@ -22,6 +22,7 @@ final class SafariSwitch: ObservableObject {
         guard let f = flag else { return }
         let v = minutes.map { Date().timeIntervalSince1970 + $0 * 60 } ?? 0
         try? String(v).write(to: f, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: f.path)  // nur der Nutzer
         refresh()
     }
 }
