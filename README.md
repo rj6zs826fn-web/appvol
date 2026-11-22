@@ -20,7 +20,7 @@ Das baut das Kommandozeilen-Tool `appvol` und die Notch-App `AppVol.app`.
 open AppVol.app
 ```
 Fährst du mit der Maus an die Notch, klappt ein Panel auf. Ohne Notch erscheint oben in der Mitte eine schwarze Pseudo-Notch. Dasselbe Panel gibt es auch über das Symbol in der Menüleiste.
-- **Lautstärke:** ein Regler für jede App, die gerade Ton abspielt. Bei 100 % wird der Tap wieder entfernt.
+- **Lautstärke:** oben die Gesamtlautstärke, darunter ein Regler für jede App, die gerade Ton abspielt (0–200 %). Über 100 % wird die App lauter als normal, die Zahl wird dann orange. Bei 100 % rastet der Regler ein und der Tap wird wieder entfernt.
 - **Ablage:** Dateien auf die Notch ziehen, später wieder herausziehen. Rechtsklick zeigt die Datei im Finder oder entfernt sie aus der Ablage. Die Ablage merkt sich die Dateien nur, solange die App läuft.
 - **Schalter:** alle Lautstärken zurücksetzen, App beenden. Gibt es `~/mcp/safari`, kommt zusätzlich ein Zeitschalter für einen lokalen Safari-MCP-Server dazu.
 
@@ -33,6 +33,8 @@ APPVOL_PREVIEW=volume ./AppVol.app/Contents/MacOS/AppVol   # volume | shelf | sw
 ```sh
 ./appvol list            # Audio-Prozesse, ▶ = spielt gerade Ton ab
 ./appvol zoom 40         # Zoom auf 40 %
+./appvol zoom 150        # Zoom lauter: 150 % (bis 200 %)
+./appvol system 30       # Gesamtlautstärke auf 30 %
 ./appvol avconferenced 30   # FaceTime- und iPhone-Anrufe auf 30 %
 ./appvol 12345 50        # per PID
 ```
@@ -48,7 +50,7 @@ Beim ersten Start fragt macOS nach der Freigabe für **Audioaufnahme**.
 2. Ein privates **Aggregate-Device** aus Standard-Ausgang und Tap spielt den Ton mit der gewählten Lautstärke wieder ab.
 
 ## Grenzen
-- Nur leiser (0–100 %), nicht lauter.
+- Lauter als 100 % schneidet sehr laute Stellen hart ab, das kann verzerrt klingen.
 - Wechselst du das Ausgabegerät, zum Beispiel weil du AirPods verbindest, musst du appvol neu starten.
 - Wird appvol hart beendet (`kill -9`), bleibt die App stumm, bis der Prozess endet. Ein normales `Ctrl+C` räumt sauber auf.
 

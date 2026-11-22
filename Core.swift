@@ -64,9 +64,34 @@ func matches(_ query: String, in procs: [AudioProcess]) -> [AudioProcess] {
     return procs.filter { $0.bundle.lowercased().contains(query.lowercased()) }
 }
 
+/// Höchste Lautstärke pro App: 2 = 200 % (lauter machen).
+let maxBoost: Float = 2
+
 func parseVolume(_ s: String) -> Float? {
-    guard let v = Float(s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "%", with: "")), (0...100).contains(v) else { return nil }
+    guard let v = Float(s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "%", with: "")), (0...maxBoost * 100).contains(v) else { return nil }
     return v / 100
+}
+
+// ---------- Gesamtlautstärke (Standard-Ausgabegerät) ----------
+
+func defaultOutputDevice() -> AudioObjectID? {
+    getValue(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(0))
+}
+
+private var mainVolumeAddr = addr(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
+
+/// nil, wenn das Gerät keine Lautstärke hat (z.B. manche HDMI-Ausgänge).
+func systemVolume() -> Float? {
+    guard let dev = defaultOutputDevice() else { return nil }
+    var v: Float32 = 0
+    var size = UInt32(MemoryLayout<Float32>.size)
+    return AudioObjectGetPropertyData(dev, &mainVolumeAddr, 0, nil, &size, &v) == noErr ? v : nil
+}
+
+func setSystemVolume(_ value: Float) {
+    guard let dev = defaultOutputDevice() else { return }
+    var v = Float32(max(0, min(1, value)))
+    AudioObjectSetPropertyData(dev, &mainVolumeAddr, 0, nil, UInt32(MemoryLayout<Float32>.size), &v)
 }
 
 /// Regelt die Lautstärke der gegebenen Audio-Prozesse, solange das Objekt lebt.
@@ -79,7 +104,7 @@ final class VolumeTap {
 
     var volume: Float {
         get { gain.pointee }
-        set { gain.pointee = max(0, min(1, newValue)) }
+        set { gain.pointee = max(0, min(maxBoost, newValue)) }
     }
 
     init(processes: [AudioObjectID], volume: Float) throws {
@@ -95,7 +120,7 @@ final class VolumeTap {
         tapDesc.name = "appvol"
         try check(AudioHardwareCreateProcessTap(tapDesc, &tapID), "Process Tap anlegen (Audioaufnahme-Freigabe erteilt?)")
 
-        guard let outDev = getValue(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(0)),
+        guard let outDev = defaultOutputDevice(),
               let outUID = getString(outDev, kAudioDevicePropertyDeviceUID) else { throw AudioError(description: "kein Standard-Ausgabegerät") }
         // Hat der Ausgang selbst Eingänge (Headset-Mikro), kommen die zuerst – überspringen, sonst hört man sich selbst.
         let skipInputs = getArray(outDev, kAudioDevicePropertyStreams, kAudioObjectPropertyScopeInput, zero: AudioStreamID(0)).count
@@ -126,7 +151,8 @@ final class VolumeTap {
                     memset(o, 0, Int(out.mDataByteSize)); continue
                 }
                 let m = min(n, Int(tapBufs[min(i, tapBufs.count - 1)].mDataByteSize) / MemoryLayout<Float>.size)
-                for k in 0..<m { o[k] = src[k] * g }
+                // shortcut: hartes Begrenzen bei >100 % – klingt bei sehr lauten Quellen verzerrt, dann Limiter einbauen
+                for k in 0..<m { o[k] = max(-1, min(1, src[k] * g)) }
                 if m < n { for k in m..<n { o[k] = 0 } }
             }
         }, "Audio-Verarbeitung anlegen")
@@ -149,5 +175,5 @@ func coreSelftest() {
     precondition(matches("Zoom", in: ps).map(\.id) == [1])
     precondition(matches("11", in: ps).map(\.id) == [2])
     precondition(matches("teams", in: ps).isEmpty)
-    precondition(parseVolume("40") == 0.4 && parseVolume(" 100% ") == 1 && parseVolume("101") == nil && parseVolume("x") == nil)
+    precondition(parseVolume("40") == 0.4 && parseVolume(" 100% ") == 1 && parseVolume("150") == 1.5 && parseVolume("201") == nil && parseVolume("x") == nil)
 }
