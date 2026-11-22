@@ -18,9 +18,13 @@ struct AppRow: Identifiable {
 
 @MainActor
 final class AppState: ObservableObject {
-    enum Tab: String, CaseIterable { case volume = "Lautstärke", shelf = "Ablage", switches = "Schalter" }
+    enum Tab: String, CaseIterable { case volume = "Lautstärke", claude = "Claude", shelf = "Ablage", switches = "Schalter" }
 
     @Published var expanded = false
+    @Published var claude: [ClaudeSession] = []
+    @Published var popupUntil: Date?   // Notch ist von selbst aufgeklappt (Claude fertig / Rückfrage)
+    private let monitor = ClaudeMonitor()
+    private var lastClaudeStates: [String: String]?
     @Published var tab: Tab = .volume
     @Published var rows: [AppRow] = []
     @Published var levels: [String: Float] = [:]
@@ -35,7 +39,41 @@ final class AppState: ObservableObject {
 
     init() {
         refresh()
+        refreshClaude()
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in Task { @MainActor in self.refresh() } }
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in Task { @MainActor in self.refreshClaude() } }
+    }
+
+    func refreshClaude() {
+        let list = monitor.load()
+        if list != claude { claude = list }
+        let states = Dictionary(uniqueKeysWithValues: list.map { ($0.id, "\($0.state)/\($0.needsInput)") })
+        defer { lastClaudeStates = states }
+        guard let prev = lastClaudeStates else { return }  // beim Start nicht aufploppen
+        // Aufploppen, sobald eine Sitzung fertig wird oder etwas von dir braucht
+        if list.contains(where: { $0.state != .working && prev[$0.id] != states[$0.id] }) {
+            tab = .claude
+            expanded = true
+            popupUntil = Date().addingTimeInterval(6)
+        }
+    }
+
+    func openClaude(_ s: ClaudeSession) {
+        if let url = s.openURL { NSWorkspace.shared.open(url) }
+        else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
+            NSWorkspace.shared.openApplication(at: app, configuration: .init())
+        }
+        if s.state == .done { monitor.dismiss(s) }
+        popupUntil = nil
+        expanded = false
+        refreshClaude()
+    }
+
+    /// Anzeige links/rechts der Notch, solange Claude-Sitzungen aktiv sind.
+    var claudeBadge: (working: Bool, count: Int, color: Color)? {
+        guard !claude.isEmpty else { return nil }
+        let color: Color = claude.contains { $0.needsInput } ? .orange : claude.contains { $0.state == .working } ? .white : .green
+        return (claude.contains { $0.state == .working }, claude.count, color)
     }
 
     func refresh() {
@@ -120,6 +158,7 @@ struct PanelContent: View {
 
             switch state.tab {
             case .volume: volume
+            case .claude: claudeList
             case .shelf: shelf
             case .switches: switches
             }
@@ -167,6 +206,42 @@ struct PanelContent: View {
             Text("\(Int((value * 100).rounded())) %").monospacedDigit()
                 .foregroundStyle(value > 1 ? .orange : .primary)
                 .frame(width: 46, alignment: .trailing)
+        }
+    }
+
+    private var claudeList: some View {
+        Group {
+            if state.claude.isEmpty {
+                Text("Keine aktiven Claude-Sitzungen.").foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(state.claude) { s in
+                            Button { state.openClaude(s) } label: {
+                                HStack(spacing: 10) {
+                                    Group {
+                                        if s.needsInput { Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange) }
+                                        else if s.state == .working { ProgressView().controlSize(.small) }
+                                        else { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                                    }
+                                    .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(s.title).fontWeight(.semibold).lineLimit(1)
+                                        Text(s.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Text(s.updated, style: .relative).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+                                }
+                                .padding(.vertical, 4).padding(.horizontal, 6)
+                                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(s.localId == nil ? "Claude öffnen" : "Zum Chat springen")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -234,12 +309,30 @@ struct NotchView: View {
     let notch: CGSize
     let panel: CGSize
 
+    static let wing: CGFloat = 34   // Breite der Claude-Anzeige links/rechts der Notch
+
     var body: some View {
-        let size = state.expanded ? panel : notch
+        let badge = state.claudeBadge
+        let size = state.expanded ? panel : CGSize(width: notch.width + (badge == nil ? 0 : 2 * Self.wing), height: notch.height)
         ZStack(alignment: .top) {
             UnevenRoundedRectangle(bottomLeadingRadius: state.expanded ? 22 : 10, bottomTrailingRadius: state.expanded ? 22 : 10)
                 .fill(.black)
                 .frame(width: size.width, height: size.height)
+            if !state.expanded, let b = badge {
+                HStack(spacing: 0) {
+                    Group {
+                        if b.working { Image(systemName: "sparkle").foregroundStyle(.orange).symbolEffect(.pulse) }
+                        else { Image(systemName: "sparkle").foregroundStyle(b.color) }
+                    }
+                    .frame(width: Self.wing)
+                    Spacer(minLength: notch.width)
+                    Text("\(b.count)").font(.system(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(b.color)
+                        .frame(width: Self.wing)
+                }
+                .frame(width: size.width, height: notch.height)
+                .environment(\.colorScheme, .dark)
+                .accessibilityLabel("\(b.count) Claude-Sitzungen")
+            }
             if state.expanded {
                 PanelContent(state: state)
                     .padding(.top, notch.height - 6)
@@ -301,8 +394,17 @@ final class NotchController {
         if preview { return }
         let p = NSEvent.mouseLocation
         let dragging = NSEvent.pressedMouseButtons & 1 != 0
+        let overPanel = panelRect.insetBy(dx: -16, dy: -16).contains(p)
+        // Von selbst aufgeklappt: einige Sekunden offen lassen, außer die Maus übernimmt
+        if let until = state.popupUntil {
+            if overPanel { state.popupUntil = nil }
+            else if Date() < until { panel.ignoresMouseEvents = false; return }
+            else { state.popupUntil = nil; state.expanded = false }
+        }
         if !state.expanded {
-            guard notchRect.insetBy(dx: -8, dy: -2).contains(p) else { return }
+            panel.ignoresMouseEvents = true  // eingeklappt: Klicks gehen an die Menüleiste darunter
+            let wing = state.claudeBadge == nil ? 8 : NotchView.wing + 8
+            guard notchRect.insetBy(dx: -wing, dy: -2).contains(p) else { return }
             // Beim Ziehen von Dateien gleich die Ablage zeigen
             if dragging, NSPasteboard(name: .drag).canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
                 state.tab = .shelf
@@ -310,7 +412,7 @@ final class NotchController {
             state.expanded = true
             panel.ignoresMouseEvents = false
             collapseAt = nil
-        } else if panelRect.insetBy(dx: -16, dy: -16).contains(p) {
+        } else if overPanel {
             collapseAt = nil
         } else if collapseAt == nil {
             collapseAt = Date().addingTimeInterval(0.4)

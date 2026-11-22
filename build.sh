@@ -12,6 +12,6 @@ swiftc -O Core.swift main.swift -o appvol \
 rm -rf AppVol.app
 mkdir -p AppVol.app/Contents/MacOS
 cp App/Info.plist AppVol.app/Contents/Info.plist
-swiftc -O -parse-as-library Core.swift App/NotchApp.swift -o AppVol.app/Contents/MacOS/AppVol
+swiftc -O -parse-as-library Core.swift App/*.swift -o AppVol.app/Contents/MacOS/AppVol
 codesign --force --sign - AppVol.app  # ad-hoc, damit die Audio-Freigabe gemerkt wird
 echo "gebaut: ./appvol und ./AppVol.app"
