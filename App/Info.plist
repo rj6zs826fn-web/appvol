@@ -18,5 +18,12 @@
     <true/>
     <key>NSAudioCaptureUsageDescription</key>
     <string>AppVol greift den Ton einer App ab, um ihre Lautstärke zu ändern.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>AppVol fragt dein Home Assistant im Heimnetz ab, wenn du die Funktion einschaltest.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>

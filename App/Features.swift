@@ -5,7 +5,7 @@
 import SwiftUI
 
 enum Feature: String, CaseIterable, Identifiable {
-    case volume, claude, shelf, safari
+    case volume, claude, shelf, safari, homeassistant
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .claude: "Claude"
         case .shelf: "Ablage"
         case .safari: "Safari-MCP"
+        case .homeassistant: "Home Assistant"
         }
     }
 
@@ -24,6 +25,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .claude: "Status deiner Claude-Code-Sitzungen, Aufploppen bei fertig/Rückfrage"
         case .shelf: "Dateien per Drag & Drop kurz in der Notch ablegen"
         case .safari: "Zeitschalter für einen lokalen Safari-MCP-Server"
+        case .homeassistant: "Geräte und Sensoren aus deinem Home Assistant schalten und anzeigen"
         }
     }
 
@@ -31,7 +33,7 @@ enum Feature: String, CaseIterable, Identifiable {
     var defaultOn: Bool {
         switch self {
         case .volume, .shelf: true
-        case .claude, .safari: false
+        case .claude, .safari, .homeassistant: false
         }
     }
 

@@ -159,6 +159,7 @@ struct FeatureTab: View {
         case .claude: ClaudeListView(state: state)
         case .shelf: ShelfView(store: state.shelf)
         case .safari: SafariView(sw: state.safari)
+        case .homeassistant: HomeAssistantView()
         }
     }
 }
@@ -172,6 +173,7 @@ struct FeatureSettings: View {
         case .shelf: ShelfSettings()
         case .safari: SafariSettings()
         case .claude: ClaudeSettings()
+        case .homeassistant: HomeAssistantSettings()
         case .volume: EmptyView()
         }
     }
@@ -315,6 +317,7 @@ struct NotchShape: Shape {
 
 struct NotchView: View {
     @ObservedObject var state: AppState
+    @ObservedObject var ha = HAStore.shared
     let notch: CGSize
     let panel: CGSize
     static let wing: CGFloat = 34   // Breite der Anzeige links/rechts der Notch
@@ -323,7 +326,9 @@ struct NotchView: View {
         let badge = state.claudeBadge
         let open = state.expanded
         let ear: CGFloat = open ? 14 : 6
-        let size = open ? panel : CGSize(width: notch.width + 2 * ear + (badge == nil ? 0 : 2 * Self.wing), height: notch.height)
+        let haWings = badge == nil ? ha.wings : []  // Claude hat Vorrang neben der Notch
+        let wing = badge != nil ? Self.wing : haWings.isEmpty ? 0 : HAStore.wingWidth
+        let size = open ? panel : CGSize(width: notch.width + 2 * ear + 2 * wing, height: notch.height)
         let shape = NotchShape(top: ear, bottom: open ? 24 : 10)
 
         ZStack(alignment: .top) {
@@ -341,6 +346,7 @@ struct NotchView: View {
                 .transition(.opacity)
                 .accessibilityLabel("\(b.count) Claude-Sitzungen")
             }
+            if !open, !haWings.isEmpty { HANotchWings(values: haWings, notch: notch, ear: ear, width: size.width) }
             if open {
                 // Inhalt hat feste Panelgröße und wird von der wachsenden Form freigelegt – läuft nie voraus
                 PanelContent(state: state)
@@ -359,6 +365,7 @@ struct NotchView: View {
         .frame(width: panel.width + 40, height: panel.height + 30, alignment: .top)
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: open)
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: badge == nil)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: haWings.isEmpty)
     }
 }
 
