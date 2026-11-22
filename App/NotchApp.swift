@@ -21,6 +21,8 @@ final class AppState: ObservableObject {
     let prefs = Prefs.shared
     let shelf = ShelfStore()
     let safari = SafariSwitch()
+    let media = MediaPlayer()
+    let outputs = OutputDevices()
 
     @Published var expanded = false
     @Published var tab: Feature = .volume
@@ -42,6 +44,8 @@ final class AppState: ObservableObject {
     var tabs: [Feature] { Feature.allCases.filter { $0.hasTab && prefs.isOn($0) } }
 
     init() {
+        mediaSelftest()
+        onDefaultOutputChange { MainActor.assumeIsolated { self.outputChanged() } }
         refresh()
         refreshClaude()
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in Task { @MainActor in self.refresh() } }
@@ -59,6 +63,8 @@ final class AppState: ObservableObject {
     func refresh() {
         if !tabs.contains(tab), let first = tabs.first { tab = first }
         safari.refresh()
+        media.keepRunning(prefs.isOn(.media))
+        if prefs.isOn(.outputDevice) { outputs.refresh() }
         guard prefs.isOn(.volume) else { if !taps.isEmpty { resetAll() }; return }
         var groups: [String: (name: String, icon: NSImage?, symbol: String, ids: [AudioObjectID], playing: Bool)] = [:]
         let apps = NSWorkspace.shared.runningApplications
@@ -104,6 +110,19 @@ final class AppState: ObservableObject {
         if let t = taps[row.id] { t.volume = v; return }
         do { taps[row.id] = try VolumeTap(processes: row.processes, volume: v); error = nil }
         catch { self.error = "\(error)"; levels[row.id] = 1 }
+    }
+
+    /// Standardgerät gewechselt (AirPods verbunden, Auswahl): Taps hängen noch am alten Gerät – mit gleicher Lautstärke neu anlegen.
+    private func outputChanged() {
+        outputs.refresh()
+        system = systemVolume()
+        for (key, old) in taps {
+            old.stop()
+            taps[key] = nil
+            guard let row = rows.first(where: { $0.id == key }) else { levels[key] = nil; continue }
+            do { taps[key] = try VolumeTap(processes: row.processes, volume: old.volume) }
+            catch { self.error = "\(error)"; levels[key] = 1 }
+        }
     }
 
     func resetAll() {
@@ -156,6 +175,8 @@ struct FeatureTab: View {
     var body: some View {
         switch feature {
         case .volume: VolumeView(state: state)
+        case .media: MediaView(media: state.media)
+        case .outputDevice: EmptyView()  // kein eigener Tab, steckt im Lautstärke-Tab
         case .claude: ClaudeListView(state: state)
         case .shelf: ShelfView(store: state.shelf)
         case .safari: SafariView(sw: state.safari)
@@ -172,7 +193,7 @@ struct FeatureSettings: View {
         case .shelf: ShelfSettings()
         case .safari: SafariSettings()
         case .claude: ClaudeSettings()
-        case .volume: EmptyView()
+        case .volume, .outputDevice, .media: EmptyView()
         }
     }
 }
@@ -219,6 +240,7 @@ struct VolumeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if state.prefs.isOn(.outputDevice) { OutputPicker(devices: state.outputs) }
             if let sys = state.system {
                 sliderRow(icon: Image(systemName: "speaker.wave.3.fill"), name: "Gesamt", value: sys, range: 0...1) { state.setSystem($0) }
                     .fontWeight(.semibold)
@@ -458,7 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ n: Notification) {
-        MainActor.assumeIsolated { AppDelegate.state.resetAll() }
+        MainActor.assumeIsolated { AppDelegate.state.resetAll(); AppDelegate.state.media.stop() }
     }
 }
 

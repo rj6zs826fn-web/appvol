@@ -78,6 +78,27 @@ func defaultOutputDevice() -> AudioObjectID? {
     getValue(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(0))
 }
 
+/// Alle Geräte mit Ausgangs-Streams (Lautsprecher, Kopfhörer, AirPods, HDMI …).
+func outputDevices() -> [(id: AudioObjectID, name: String)] {
+    getArray(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDevices, zero: AudioObjectID(0)).compactMap { id in
+        guard !getArray(id, kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput, zero: AudioStreamID(0)).isEmpty,
+              let uid = getString(id, kAudioDevicePropertyDeviceUID), !uid.hasPrefix("appvol-") else { return nil }  // eigene Aggregates ausblenden
+        return (id, getString(id, kAudioObjectPropertyName) ?? uid)
+    }
+}
+
+func setDefaultOutputDevice(_ id: AudioObjectID) {
+    var a = addr(kAudioHardwarePropertyDefaultOutputDevice)
+    var v = id
+    AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &v)
+}
+
+/// Ruft `handler` auf der Main-Queue auf, wenn sich das Standard-Ausgabegerät ändert.
+func onDefaultOutputChange(_ handler: @escaping () -> Void) {
+    var a = addr(kAudioHardwarePropertyDefaultOutputDevice)
+    AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &a, .main) { _, _ in handler() }
+}
+
 private var mainVolumeAddr = addr(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
 
 /// nil, wenn das Gerät keine Lautstärke hat (z.B. manche HDMI-Ausgänge).
@@ -145,7 +166,8 @@ final class VolumeTap {
         ]
         try check(AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &aggID), "Aggregate-Device anlegen")
 
-        // shortcut: nimmt Float32 an (Core-Audio-Standard) und folgt keinem Wechsel des Ausgabegeräts – dann neu starten.
+        // shortcut: nimmt Float32 an (Core-Audio-Standard). Bleibt am Gerät, das beim Anlegen Standard war:
+        // die Notch-App legt den Tap bei einem Gerätewechsel neu an (AppState), das CLI muss neu gestartet werden.
         let gain = self.gain, meter = self.meter
         try check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inData, _, outData, _ in
             let ins = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inData))
