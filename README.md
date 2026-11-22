@@ -23,11 +23,12 @@ Fährst du mit der Maus an die Notch, klappt ein Panel auf. Ohne Notch erscheint
 - **Lautstärke:** oben die Gesamtlautstärke, darunter ein Regler für jede App, die gerade Ton abspielt (0–300 %). Über 100 % wird die App lauter als normal, die Zahl wird dann orange. Bei 100 % rastet der Regler ein und der Tap wird wieder entfernt.
 - **Claude:** Status aller Claude-Code-Sitzungen (arbeitet / Rückfrage / fertig). Neben der Notch zeigen ein Symbol und eine Zahl, wie viele Sitzungen aktiv sind. Wird eine Sitzung fertig oder braucht sie dich, klappt die Notch für 6 Sekunden von selbst auf. Ein Klick springt direkt in den passenden Chat der Claude-App (`claude://code/continue?session=…`). Voraussetzung sind die Hooks unten.
 - **Ablage:** Dateien auf die Notch ziehen, später wieder herausziehen. Rechtsklick zeigt die Datei im Finder oder entfernt sie aus der Ablage. Die Ablage merkt sich die Dateien nur, solange die App läuft.
+- **Transkript** (standardmäßig aus): Video oder Audio auf die Notch ziehen, während der Tab Transkript offen ist. Das Transkript entsteht lokal, landet als `.txt` in der Ablage und auf Wunsch in der Zwischenablage. Einrichtung siehe unten.
 - **Schalter:** alle Lautstärken zurücksetzen, App beenden. Gibt es `~/mcp/safari`, kommt zusätzlich ein Zeitschalter für einen lokalen Safari-MCP-Server dazu.
 
 Vorschau ohne Maus, zum Beispiel für Screenshots:
 ```sh
-APPVOL_PREVIEW=volume ./AppVol.app/Contents/MacOS/AppVol   # volume | claude | shelf | switches
+APPVOL_PREVIEW=volume ./AppVol.app/Contents/MacOS/AppVol   # volume | claude | shelf | transcribe | safari
 ```
 
 ## Claude-Status einrichten
@@ -36,6 +37,20 @@ APPVOL_PREVIEW=volume ./AppVol.app/Contents/MacOS/AppVol   # volume | claude | s
 { "type": "command", "command": "python3 -I \"$HOME/Developer/appvol/claude-status-hook.py\"", "timeout": 5, "async": true }
 ```
 Titel und Direktlink liest AppVol aus den Sitzungsdateien der Claude-Desktop-App. Das ist ein internes Format: Ändert es sich, fehlen nur Titel und Direktlink, der Status funktioniert weiter.
+
+## Transkript einrichten
+1. Werkzeuge installieren: `brew install ffmpeg whisper-cpp`
+2. Einstellungen → Funktionen → **Transkript** einschalten. Dort steht, ob `ffmpeg` und `whisper-cli` gefunden wurden (gesucht wird in `/opt/homebrew/bin`, `/usr/local/bin` und im PATH).
+3. Modell wählen und **Laden** drücken: base (≈ 150 MB, schnell), small (≈ 490 MB) oder large-v3-turbo (≈ 570 MB, beste Qualität). Der Download kommt direkt von Hugging Face (`ggerganov/whisper.cpp`) nach `~/Library/Application Support/AppVol/models/` und wird per SHA-256 geprüft. Hast du schon eine `ggml-*.bin`, wähle sie mit **Datei wählen …**.
+4. Sprache wählen (Automatisch erkennt sie selbst).
+
+Ablauf: `ffmpeg` macht aus der Datei ein 16-kHz-Mono-WAV, `whisper-cli` schreibt den Text. Fortschritt und **Abbrechen** stehen im Tab, wenn es fertig ist, klappt die Notch kurz auf. Das Transkript liegt in `~/Library/Application Support/AppVol/Shelf/` und wird mit der Ablage gelöscht. Andere Dateien landen wie gewohnt in der Ablage.
+
+Test ohne Oberfläche (nutzt das Modell aus den Einstellungen):
+```sh
+APPVOL_TRANSCRIBE=datei.mp4 ./AppVol.app/Contents/MacOS/AppVol                               # druckt Text und Dauer
+APPVOL_TRANSCRIBE=datei.mp4 APPVOL_TRANSCRIBE_CANCEL=2 ./AppVol.app/Contents/MacOS/AppVol    # Abbruch nach 2 s
+```
 
 ## Nutzung
 ```sh

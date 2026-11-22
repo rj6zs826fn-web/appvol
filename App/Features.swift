@@ -5,7 +5,7 @@
 import SwiftUI
 
 enum Feature: String, CaseIterable, Identifiable {
-    case volume, claude, shelf, safari
+    case volume, claude, shelf, transcribe, safari
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .volume: "Lautstärke"
         case .claude: "Claude"
         case .shelf: "Ablage"
+        case .transcribe: "Transkript"
         case .safari: "Safari-MCP"
         }
     }
@@ -23,6 +24,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .volume: "Gesamtlautstärke und Lautstärke pro App (0–300 %)"
         case .claude: "Status deiner Claude-Code-Sitzungen, Aufploppen bei fertig/Rückfrage"
         case .shelf: "Dateien per Drag & Drop kurz in der Notch ablegen"
+        case .transcribe: "Video oder Audio auf die Notch ziehen → lokales Transkript (whisper.cpp)"
         case .safari: "Zeitschalter für einen lokalen Safari-MCP-Server"
         }
     }
@@ -31,7 +33,7 @@ enum Feature: String, CaseIterable, Identifiable {
     var defaultOn: Bool {
         switch self {
         case .volume, .shelf: true
-        case .claude, .safari: false
+        case .claude, .safari, .transcribe: false
         }
     }
 
@@ -49,6 +51,9 @@ final class Prefs: ObservableObject {
     @Published var shelfClear: ShelfClear { didSet { d.set(shelfClear.rawValue, forKey: "shelf.clear") } }
     @Published var shelfHours: Int { didSet { d.set(shelfHours, forKey: "shelf.hours") } }
     @Published var safariDir: String { didSet { d.set(safariDir, forKey: "safari.dir") } }
+    @Published var transcribeModel: String { didSet { d.set(transcribeModel, forKey: "transcribe.model") } }
+    @Published var transcribeLang: String { didSet { d.set(transcribeLang, forKey: "transcribe.lang") } }
+    @Published var transcribeCopy: Bool { didSet { d.set(transcribeCopy, forKey: "transcribe.copy") } }
 
     enum ShelfClear: String, CaseIterable { case restart, interval }
 
@@ -57,6 +62,9 @@ final class Prefs: ObservableObject {
         shelfClear = ShelfClear(rawValue: d.string(forKey: "shelf.clear") ?? "") ?? .restart
         shelfHours = max(1, d.integer(forKey: "shelf.hours") == 0 ? 1 : d.integer(forKey: "shelf.hours"))
         safariDir = d.string(forKey: "safari.dir") ?? ""
+        transcribeModel = d.string(forKey: "transcribe.model") ?? ""
+        transcribeLang = d.string(forKey: "transcribe.lang") ?? "auto"
+        transcribeCopy = d.bool(forKey: "transcribe.copy")
     }
 
     func isOn(_ f: Feature) -> Bool { enabled.contains(f) }
