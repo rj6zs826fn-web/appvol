@@ -1,4 +1,4 @@
-// AppVol Notch: Lautstärke pro App, Kurzablage per Drag & Drop und Schalter – in der Notch und in der Menüleiste.
+// AppVol Notch: Funktionen in der Notch und in der Menüleiste. Welche Funktionen es gibt, steht in Features.swift.
 
 import AppKit
 import CoreAudio
@@ -18,24 +18,28 @@ struct AppRow: Identifiable {
 
 @MainActor
 final class AppState: ObservableObject {
-    enum Tab: String, CaseIterable { case volume = "Lautstärke", claude = "Claude", shelf = "Ablage", switches = "Schalter" }
+    let prefs = Prefs.shared
+    let shelf = ShelfStore()
+    let safari = SafariSwitch()
 
     @Published var expanded = false
-    @Published var claude: [ClaudeSession] = []
-    @Published var popupUntil: Date?   // Notch ist von selbst aufgeklappt (Claude fertig / Rückfrage)
-    private let monitor = ClaudeMonitor()
-    private var lastClaudeStates: [String: String]?
-    @Published var tab: Tab = .volume
+    @Published var tab: Feature = .volume
+    @Published var popupUntil: Date?   // Notch ist von selbst aufgeklappt (z.B. Claude fertig)
+
+    // Lautstärke
     @Published var rows: [AppRow] = []
     @Published var levels: [String: Float] = [:]
-    @Published var shelf: [URL] = []
     @Published var error: String?
-    @Published var safariUntil: Date?
     @Published var system: Float?   // Gesamtlautstärke, nil = nicht regelbar
-
     private var taps: [String: VolumeTap] = [:]
-    let safariFlag = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("mcp/safari/.enabled_until")
-    var hasSafariMCP: Bool { FileManager.default.fileExists(atPath: safariFlag.deletingLastPathComponent().path) }
+
+    // Claude
+    @Published var claude: [ClaudeSession] = []
+    private let monitor = ClaudeMonitor()
+    private var lastClaudeStates: [String: String]?
+
+    /// Tabs der eingeschalteten Funktionen in fester Reihenfolge.
+    var tabs: [Feature] { Feature.allCases.filter { $0.hasTab && prefs.isOn($0) } }
 
     init() {
         refresh()
@@ -44,39 +48,18 @@ final class AppState: ObservableObject {
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in Task { @MainActor in self.refreshClaude() } }
     }
 
-    func refreshClaude() {
-        let list = monitor.load()
-        if list != claude { claude = list }
-        let states = Dictionary(uniqueKeysWithValues: list.map { ($0.id, "\($0.state)/\($0.needsInput)") })
-        defer { lastClaudeStates = states }
-        guard let prev = lastClaudeStates else { return }  // beim Start nicht aufploppen
-        // Aufploppen, sobald eine Sitzung fertig wird oder etwas von dir braucht
-        if list.contains(where: { $0.state != .working && prev[$0.id] != states[$0.id] }) {
-            tab = .claude
-            expanded = true
-            popupUntil = Date().addingTimeInterval(6)
-        }
-    }
-
-    func openClaude(_ s: ClaudeSession) {
-        if let url = s.openURL { NSWorkspace.shared.open(url) }
-        else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
-            NSWorkspace.shared.openApplication(at: app, configuration: .init())
-        }
-        if s.state == .done { monitor.dismiss(s) }
-        popupUntil = nil
-        expanded = false
-        refreshClaude()
-    }
-
-    /// Anzeige links/rechts der Notch, solange Claude-Sitzungen aktiv sind.
-    var claudeBadge: (working: Bool, count: Int, color: Color)? {
-        guard !claude.isEmpty else { return nil }
-        let color: Color = claude.contains { $0.needsInput } ? .orange : claude.contains { $0.state == .working } ? .white : .green
-        return (claude.contains { $0.state == .working }, claude.count, color)
+    /// Klappt die Notch für ein paar Sekunden von selbst auf.
+    func popup(_ f: Feature, seconds: Double = 6) {
+        guard prefs.isOn(f) else { return }
+        tab = f
+        expanded = true
+        popupUntil = Date().addingTimeInterval(seconds)
     }
 
     func refresh() {
+        if !tabs.contains(tab), let first = tabs.first { tab = first }
+        safari.refresh()
+        guard prefs.isOn(.volume) else { if !taps.isEmpty { resetAll() }; return }
         var groups: [String: (name: String, icon: NSImage?, symbol: String, ids: [AudioObjectID], playing: Bool)] = [:]
         let apps = NSWorkspace.shared.runningApplications
         for p in audioProcesses() {
@@ -90,9 +73,6 @@ final class AppState: ObservableObject {
         rows = groups.map { AppRow(id: $0.key, name: $0.value.name, icon: $0.value.icon, symbol: $0.value.symbol, processes: $0.value.ids, playing: $0.value.playing) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         system = systemVolume()
-        if let t = try? String(contentsOf: safariFlag, encoding: .utf8), let v = Double(t.trimmingCharacters(in: .whitespacesAndNewlines)), v > Date().timeIntervalSince1970 {
-            safariUntil = Date(timeIntervalSince1970: v)
-        } else { safariUntil = nil }
     }
 
     /// Ordnet Hilfsprozesse (z.B. com.google.Chrome.helper) ihrer App zu.
@@ -129,39 +109,98 @@ final class AppState: ObservableObject {
     func resetAll() {
         taps.values.forEach { $0.stop() }
         taps = [:]; levels = [:]
-        refresh()
+    }
+
+    func refreshClaude() {
+        guard prefs.isOn(.claude) else { claude = []; lastClaudeStates = nil; return }
+        let list = monitor.load()
+        if list != claude { claude = list }
+        let states = Dictionary(uniqueKeysWithValues: list.map { ($0.id, "\($0.state)/\($0.needsInput)") })
+        defer { lastClaudeStates = states }
+        guard let prev = lastClaudeStates else { return }  // beim Start nicht aufploppen
+        if list.contains(where: { $0.state != .working && prev[$0.id] != states[$0.id] }) { popup(.claude) }
+    }
+
+    func openClaude(_ s: ClaudeSession) {
+        if let url = s.openURL { NSWorkspace.shared.open(url) }
+        else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
+            NSWorkspace.shared.openApplication(at: app, configuration: .init())
+        }
+        if s.state == .done { monitor.dismiss(s) }
+        popupUntil = nil
+        expanded = false
+        refreshClaude()
+    }
+
+    /// Anzeige links/rechts der Notch, solange Claude-Sitzungen aktiv sind.
+    var claudeBadge: (working: Bool, count: Int, color: Color)? {
+        guard prefs.isOn(.claude), !claude.isEmpty else { return nil }
+        let color: Color = claude.contains { $0.needsInput } ? .orange : claude.contains { $0.state == .working } ? .white : .green
+        return (claude.contains { $0.state == .working }, claude.count, color)
     }
 
     func addToShelf(_ urls: [URL]) {
-        for u in urls where !shelf.contains(u) { shelf.append(u) }
+        guard prefs.isOn(.shelf) else { return }
+        shelf.add(urls)
         tab = .shelf
-    }
-
-    func setSafari(minutes: Double?) {
-        let until = minutes.map { Date().timeIntervalSince1970 + $0 * 60 } ?? 0
-        try? String(until).write(to: safariFlag, atomically: true, encoding: .utf8)
-        refresh()
     }
 }
 
 // ---------- Oberfläche ----------
 
-struct PanelContent: View {
+/// Inhalt eines Tabs. Neue Funktion: hier ihren Fall eintragen.
+struct FeatureTab: View {
+    let feature: Feature
     @ObservedObject var state: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("", selection: $state.tab) {
-                ForEach(AppState.Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented).labelsHidden()
+        switch feature {
+        case .volume: VolumeView(state: state)
+        case .claude: ClaudeListView(state: state)
+        case .shelf: ShelfView(store: state.shelf)
+        case .safari: SafariView(sw: state.safari)
+        }
+    }
+}
 
-            switch state.tab {
-            case .volume: volume
-            case .claude: claudeList
-            case .shelf: shelf
-            case .switches: switches
+/// Abschnitt in den Einstellungen, sichtbar wenn die Funktion an ist. Neue Funktion: hier eintragen.
+struct FeatureSettings: View {
+    let feature: Feature
+
+    var body: some View {
+        switch feature {
+        case .shelf: ShelfSettings()
+        case .safari: SafariSettings()
+        case .claude: ClaudeSettings()
+        case .volume: EmptyView()
+        }
+    }
+}
+
+struct PanelContent: View {
+    @ObservedObject var state: AppState
+    @ObservedObject var prefs = Prefs.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                if state.tabs.count > 1 {
+                    Picker("", selection: $state.tab) {
+                        ForEach(state.tabs) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden()
+                }
+                Spacer(minLength: 0)
+                SettingsLink { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .accessibilityLabel("Einstellungen")
             }
+            if state.tabs.isEmpty {
+                Text("Alle Funktionen sind aus. Einschalten unter Einstellungen.").foregroundStyle(.secondary)
+            } else {
+                FeatureTab(feature: state.tab, state: state)
+            }
+            Spacer(minLength: 0)
         }
         .padding(14)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -173,8 +212,12 @@ struct PanelContent: View {
             return true
         }
     }
+}
 
-    private var volume: some View {
+struct VolumeView: View {
+    @ObservedObject var state: AppState
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let sys = state.system {
                 sliderRow(icon: Image(systemName: "speaker.wave.3.fill"), name: "Gesamt", value: sys, range: 0...1) { state.setSystem($0) }
@@ -208,99 +251,65 @@ struct PanelContent: View {
                 .frame(width: 46, alignment: .trailing)
         }
     }
+}
 
-    private var claudeList: some View {
-        Group {
-            if state.claude.isEmpty {
-                Text("Keine aktiven Claude-Sitzungen.").foregroundStyle(.secondary)
-            } else {
-                ScrollView {
-                    VStack(spacing: 6) {
-                        ForEach(state.claude) { s in
-                            Button { state.openClaude(s) } label: {
-                                HStack(spacing: 10) {
-                                    Group {
-                                        if s.needsInput { Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange) }
-                                        else if s.state == .working { ProgressView().controlSize(.small) }
-                                        else { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                                    }
-                                    .frame(width: 18)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(s.title).fontWeight(.semibold).lineLimit(1)
-                                        Text(s.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                    }
-                                    Spacer()
-                                    Text(s.updated, style: .relative).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
-                                }
-                                .padding(.vertical, 4).padding(.horizontal, 6)
-                                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                                .contentShape(Rectangle())
+struct SettingsView: View {
+    @ObservedObject var state: AppState
+    @ObservedObject var prefs = Prefs.shared
+
+    var body: some View {
+        Form {
+            Section("Funktionen") {
+                ForEach(Feature.allCases) { f in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(isOn: prefs.binding(f)) {
+                            VStack(alignment: .leading) {
+                                Text(f.title)
+                                Text(f.summary).font(.caption).foregroundStyle(.secondary)
                             }
-                            .buttonStyle(.plain)
-                            .help(s.localId == nil ? "Claude öffnen" : "Zum Chat springen")
                         }
+                        if prefs.isOn(f) { FeatureSettings(feature: f).padding(.leading, 12) }
                     }
                 }
             }
-        }
-    }
-
-    private var shelf: some View {
-        Group {
-            if state.shelf.isEmpty {
-                VStack {
-                    Image(systemName: "tray.and.arrow.down").font(.title)
-                    Text("Dateien hierher ziehen")
-                }
-                .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(state.shelf, id: \.self) { url in
-                            VStack(spacing: 4) {
-                                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 44, height: 44)
-                                Text(url.lastPathComponent).font(.caption).lineLimit(2).multilineTextAlignment(.center).frame(width: 72)
-                            }
-                            .onDrag { NSItemProvider(object: url as NSURL) }
-                            .contextMenu {
-                                Button("Im Finder zeigen") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                                Button("Aus Ablage entfernen") { state.shelf.removeAll { $0 == url } }
-                            }
-                            .help(url.path)
-                        }
-                    }
-                }
-                Button("Ablage leeren") { state.shelf = [] }.font(.caption)
-            }
-        }
-    }
-
-    private var switches: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if state.hasSafariMCP {
+            Section("Allgemein") {
                 HStack {
-                    Image(systemName: "safari")
-                    Text("Safari-MCP")
+                    Button("Alle Lautstärken zurücksetzen") { state.resetAll() }
                     Spacer()
-                    if let until = state.safariUntil {
-                        Text("AN bis \(until.formatted(date: .omitted, time: .shortened))").foregroundStyle(.green)
-                    } else {
-                        Text("AUS").foregroundStyle(.secondary)
-                    }
+                    Button("AppVol beenden") { state.resetAll(); NSApp.terminate(nil) }
                 }
-                HStack {
-                    Button("30 Min") { state.setSafari(minutes: 30) }
-                    Button("60 Min") { state.setSafari(minutes: 60) }
-                    Button("Aus") { state.setSafari(minutes: nil) }
-                }
-                Divider()
-            }
-            HStack {
-                Button("Alle Lautstärken zurücksetzen") { state.resetAll() }
-                Spacer()
-                Button("Beenden") { state.resetAll(); NSApp.terminate(nil) }
             }
         }
+        .formStyle(.grouped)
+        .frame(width: 520, height: 560)
+        .onAppear { NSApp.activate(ignoringOtherApps: true) }
+    }
+}
+
+// ---------- Notch ----------
+
+/// Notch-Form: oben nach außen gewölbte „Ohren“, unten abgerundet – wächst mit der Animation.
+struct NotchShape: Shape {
+    var top: CGFloat
+    var bottom: CGFloat
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(top, bottom) }
+        set { top = newValue.first; bottom = newValue.second }
+    }
+
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY))
+        p.addQuadCurve(to: CGPoint(x: r.minX + top, y: r.minY + top), control: CGPoint(x: r.minX + top, y: r.minY))
+        p.addLine(to: CGPoint(x: r.minX + top, y: r.maxY - bottom))
+        p.addQuadCurve(to: CGPoint(x: r.minX + top + bottom, y: r.maxY), control: CGPoint(x: r.minX + top, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - top - bottom, y: r.maxY))
+        p.addQuadCurve(to: CGPoint(x: r.maxX - top, y: r.maxY - bottom), control: CGPoint(x: r.maxX - top, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - top, y: r.minY + top))
+        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY), control: CGPoint(x: r.maxX - top, y: r.minY))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -308,54 +317,60 @@ struct NotchView: View {
     @ObservedObject var state: AppState
     let notch: CGSize
     let panel: CGSize
-
-    static let wing: CGFloat = 34   // Breite der Claude-Anzeige links/rechts der Notch
+    static let wing: CGFloat = 34   // Breite der Anzeige links/rechts der Notch
 
     var body: some View {
         let badge = state.claudeBadge
-        let size = state.expanded ? panel : CGSize(width: notch.width + (badge == nil ? 0 : 2 * Self.wing), height: notch.height)
+        let open = state.expanded
+        let ear: CGFloat = open ? 14 : 6
+        let size = open ? panel : CGSize(width: notch.width + 2 * ear + (badge == nil ? 0 : 2 * Self.wing), height: notch.height)
+        let shape = NotchShape(top: ear, bottom: open ? 24 : 10)
+
         ZStack(alignment: .top) {
-            UnevenRoundedRectangle(bottomLeadingRadius: state.expanded ? 22 : 10, bottomTrailingRadius: state.expanded ? 22 : 10)
-                .fill(.black)
-                .frame(width: size.width, height: size.height)
-            if !state.expanded, let b = badge {
+            if !open, let b = badge {
                 HStack(spacing: 0) {
-                    Group {
-                        if b.working { Image(systemName: "sparkle").foregroundStyle(.orange).symbolEffect(.pulse) }
-                        else { Image(systemName: "sparkle").foregroundStyle(b.color) }
-                    }
-                    .frame(width: Self.wing)
+                    Image(systemName: "sparkle").foregroundStyle(b.working ? .orange : b.color)
+                        .symbolEffect(.pulse, isActive: b.working)
+                        .frame(width: Self.wing)
                     Spacer(minLength: notch.width)
                     Text("\(b.count)").font(.system(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(b.color)
                         .frame(width: Self.wing)
                 }
+                .padding(.horizontal, ear)
                 .frame(width: size.width, height: notch.height)
-                .environment(\.colorScheme, .dark)
+                .transition(.opacity)
                 .accessibilityLabel("\(b.count) Claude-Sitzungen")
             }
-            if state.expanded {
+            if open {
+                // Inhalt hat feste Panelgröße und wird von der wachsenden Form freigelegt – läuft nie voraus
                 PanelContent(state: state)
                     .padding(.top, notch.height - 6)
+                    .padding(.horizontal, ear)
                     .frame(width: panel.width, height: panel.height, alignment: .top)
-                    .environment(\.colorScheme, .dark)
-                    .transition(.opacity)
+                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.12)),
+                                            removal: .opacity.animation(.easeIn(duration: 0.08))))
             }
         }
-        .frame(width: panel.width, height: panel.height, alignment: .top)
-        .animation(.spring(duration: 0.3), value: state.expanded)
+        .frame(width: size.width, height: size.height, alignment: .top)
+        .background(shape.fill(.black))
+        .clipShape(shape)
+        .shadow(color: .black.opacity(open ? 0.45 : 0), radius: 14, y: 6)
+        .environment(\.colorScheme, .dark)
+        .frame(width: panel.width + 40, height: panel.height + 30, alignment: .top)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: open)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: badge == nil)
     }
 }
-
-// ---------- Notch-Fenster ----------
 
 @MainActor
 final class NotchController {
     let state: AppState
-    let panelSize = CGSize(width: 480, height: 220)
+    let panelSize = CGSize(width: 500, height: 240)
     var panel: NSPanel!
     var notchRect = NSRect.zero
     var panelRect = NSRect.zero
     var collapseAt: Date?
+    var preview = false
 
     init(state: AppState) {
         self.state = state
@@ -382,13 +397,13 @@ final class NotchController {
         if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea {
             notch = CGSize(width: f.width - l.width - r.width, height: screen.safeAreaInsets.top)
         }
+        // Fenster etwas größer als das Panel, damit der Schatten Platz hat
+        let win = CGSize(width: panelSize.width + 40, height: panelSize.height + 30)
+        panel.setFrame(NSRect(x: f.midX - win.width / 2, y: f.maxY - win.height, width: win.width, height: win.height), display: true)
         panelRect = NSRect(x: f.midX - panelSize.width / 2, y: f.maxY - panelSize.height, width: panelSize.width, height: panelSize.height)
         notchRect = NSRect(x: f.midX - notch.width / 2, y: f.maxY - notch.height, width: notch.width, height: notch.height)
-        panel.setFrame(panelRect, display: true)
         panel.contentView = NSHostingView(rootView: NotchView(state: state, notch: notch, panel: panelSize))
     }
-
-    var preview = false
 
     func tick() {
         if preview { return }
@@ -406,7 +421,8 @@ final class NotchController {
             let wing = state.claudeBadge == nil ? 8 : NotchView.wing + 8
             guard notchRect.insetBy(dx: -wing, dy: -2).contains(p) else { return }
             // Beim Ziehen von Dateien gleich die Ablage zeigen
-            if dragging, NSPasteboard(name: .drag).canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
+            if dragging, state.prefs.isOn(.shelf),
+               NSPasteboard(name: .drag).canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
                 state.tab = .shelf
             }
             state.expanded = true
@@ -418,7 +434,6 @@ final class NotchController {
             collapseAt = Date().addingTimeInterval(0.4)
         } else if Date() >= collapseAt!, !dragging {
             state.expanded = false
-            panel.ignoresMouseEvents = true  // eingeklappt: Klicks gehen an die Menüleiste darunter
             collapseAt = nil
         }
     }
@@ -433,9 +448,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         MainActor.assumeIsolated {
             notch = NotchController(state: AppDelegate.state)
-            // Vorschau für Screenshots: APPVOL_PREVIEW=volume|shelf|switches hält das Panel offen
-            if let t = ProcessInfo.processInfo.environment["APPVOL_PREVIEW"], let tab = AppState.Tab.allCases.first(where: { "\($0)" == t }) {
-                AppDelegate.state.tab = tab
+            // Vorschau für Screenshots: APPVOL_PREVIEW=<Funktion, z.B. volume> hält das Panel offen
+            if let t = ProcessInfo.processInfo.environment["APPVOL_PREVIEW"], let f = Feature(rawValue: t) {
+                AppDelegate.state.tab = f
                 AppDelegate.state.expanded = true
                 notch?.preview = true
             }
@@ -460,8 +475,10 @@ struct AppVolNotch: App {
 
     var body: some Scene {
         MenuBarExtra("AppVol", systemImage: "speaker.wave.2.circle") {
-            PanelContent(state: state).frame(width: 420, height: 240)
+            PanelContent(state: state).frame(width: 460, height: 260)
         }
         .menuBarExtraStyle(.window)
+
+        Settings { SettingsView(state: state) }
     }
 }

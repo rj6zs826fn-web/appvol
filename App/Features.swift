@@ -1,0 +1,72 @@
+// Funktionen von AppVol: jede einzeln abschaltbar (Einstellungen → Funktionen).
+// Neue Funktion: einen Fall in `Feature` ergänzen, Titel/Standard/Tab festlegen
+// und in `FeatureViews` die Ansicht im Panel und den Abschnitt in den Einstellungen eintragen.
+
+import SwiftUI
+
+enum Feature: String, CaseIterable, Identifiable {
+    case volume, claude, shelf, safari
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .volume: "Lautstärke"
+        case .claude: "Claude"
+        case .shelf: "Ablage"
+        case .safari: "Safari-MCP"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .volume: "Gesamtlautstärke und Lautstärke pro App (0–300 %)"
+        case .claude: "Status deiner Claude-Code-Sitzungen, Aufploppen bei fertig/Rückfrage"
+        case .shelf: "Dateien per Drag & Drop kurz in der Notch ablegen"
+        case .safari: "Zeitschalter für einen lokalen Safari-MCP-Server"
+        }
+    }
+
+    /// Ohne Einrichtung nutzlose Funktionen sind standardmäßig aus.
+    var defaultOn: Bool {
+        switch self {
+        case .volume, .shelf: true
+        case .claude, .safari: false
+        }
+    }
+
+    /// Hat einen eigenen Tab im Panel (sonst nur Einstellungen / Anzeige neben der Notch).
+    var hasTab: Bool { true }
+}
+
+/// Lokale Einstellungen (UserDefaults). Persönliche Werte landen nur hier, nie im Code.
+@MainActor
+final class Prefs: ObservableObject {
+    static let shared = Prefs()
+    private let d = UserDefaults.standard
+
+    @Published var enabled: Set<Feature>
+    @Published var shelfClear: ShelfClear { didSet { d.set(shelfClear.rawValue, forKey: "shelf.clear") } }
+    @Published var shelfHours: Int { didSet { d.set(shelfHours, forKey: "shelf.hours") } }
+    @Published var safariDir: String { didSet { d.set(safariDir, forKey: "safari.dir") } }
+
+    enum ShelfClear: String, CaseIterable { case restart, interval }
+
+    private init() {
+        enabled = Set(Feature.allCases.filter { (UserDefaults.standard.object(forKey: "feature.\($0.rawValue)") as? Bool) ?? $0.defaultOn })
+        shelfClear = ShelfClear(rawValue: d.string(forKey: "shelf.clear") ?? "") ?? .restart
+        shelfHours = max(1, d.integer(forKey: "shelf.hours") == 0 ? 1 : d.integer(forKey: "shelf.hours"))
+        safariDir = d.string(forKey: "safari.dir") ?? ""
+    }
+
+    func isOn(_ f: Feature) -> Bool { enabled.contains(f) }
+
+    func set(_ f: Feature, _ on: Bool) {
+        if on { enabled.insert(f) } else { enabled.remove(f) }
+        d.set(on, forKey: "feature.\(f.rawValue)")
+    }
+
+    func binding(_ f: Feature) -> Binding<Bool> {
+        Binding(get: { self.isOn(f) }, set: { self.set(f, $0) })
+    }
+}
