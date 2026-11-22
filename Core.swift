@@ -64,8 +64,8 @@ func matches(_ query: String, in procs: [AudioProcess]) -> [AudioProcess] {
     return procs.filter { $0.bundle.lowercased().contains(query.lowercased()) }
 }
 
-/// Höchste Lautstärke pro App: 2 = 200 % (lauter machen).
-let maxBoost: Float = 2
+/// Höchste Lautstärke pro App: 3 = 300 % (lauter machen, der Limiter verhindert Übersteuern).
+let maxBoost: Float = 3
 
 func parseVolume(_ s: String) -> Float? {
     guard let v = Float(s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "%", with: "")), (0...maxBoost * 100).contains(v) else { return nil }
@@ -101,6 +101,13 @@ final class VolumeTap {
     private var procID: AudioDeviceIOProcID?
     // Vom Audio-Thread gelesen; ein Float-Schreibzugriff ist auf arm64 atomar genug für diesen Zweck.
     private let gain = UnsafeMutablePointer<Float>.allocate(capacity: 1)
+    private let meter = UnsafeMutablePointer<Float>.allocate(capacity: 3)  // [Spitze Eingang, Spitze Ausgang, Limiter-Hüllkurve]
+
+    /// Spitzenpegel seit dem letzten Aufruf (0…1), z.B. um zu prüfen, ob überhaupt Ton ankommt.
+    func peaks() -> (input: Float, output: Float) {
+        defer { meter[0] = 0; meter[1] = 0 }
+        return (meter[0], meter[1])
+    }
 
     var volume: Float {
         get { gain.pointee }
@@ -109,6 +116,7 @@ final class VolumeTap {
 
     init(processes: [AudioObjectID], volume: Float) throws {
         gain.pointee = volume
+        meter.initialize(repeating: 0, count: 3)
         do { try start(processes) } catch { stop(); throw error }
     }
 
@@ -138,7 +146,7 @@ final class VolumeTap {
         try check(AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &aggID), "Aggregate-Device anlegen")
 
         // shortcut: nimmt Float32 an (Core-Audio-Standard) und folgt keinem Wechsel des Ausgabegeräts – dann neu starten.
-        let gain = self.gain
+        let gain = self.gain, meter = self.meter
         try check(AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inData, _, outData, _ in
             let ins = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inData))
             let outs = UnsafeMutableAudioBufferListPointer(outData)
@@ -151,8 +159,15 @@ final class VolumeTap {
                     memset(o, 0, Int(out.mDataByteSize)); continue
                 }
                 let m = min(n, Int(tapBufs[min(i, tapBufs.count - 1)].mDataByteSize) / MemoryLayout<Float>.size)
-                // shortcut: hartes Begrenzen bei >100 % – klingt bei sehr lauten Quellen verzerrt, dann Limiter einbauen
-                for k in 0..<m { o[k] = max(-1, min(1, src[k] * g)) }
+                // Limiter: Spitzen über `ceiling` werden sofort heruntergeregelt und lösen sich langsam wieder (~60 ms).
+                // So wird auch voll ausgesteuerter Ton lauter (mehr Lautheit) statt hart abgeschnitten.
+                let ceiling: Float = 0.95, release: Float = 0.9997
+                for k in 0..<m {
+                    let y = src[k] * g
+                    meter[2] = max(abs(y), meter[2] * release)
+                    o[k] = meter[2] > ceiling ? y * (ceiling / meter[2]) : y
+                    meter[0] = max(meter[0], abs(src[k])); meter[1] = max(meter[1], abs(o[k]))
+                }
                 if m < n { for k in m..<n { o[k] = 0 } }
             }
         }, "Audio-Verarbeitung anlegen")
@@ -175,5 +190,5 @@ func coreSelftest() {
     precondition(matches("Zoom", in: ps).map(\.id) == [1])
     precondition(matches("11", in: ps).map(\.id) == [2])
     precondition(matches("teams", in: ps).isEmpty)
-    precondition(parseVolume("40") == 0.4 && parseVolume(" 100% ") == 1 && parseVolume("150") == 1.5 && parseVolume("201") == nil && parseVolume("x") == nil)
+    precondition(parseVolume("40") == 0.4 && parseVolume(" 100% ") == 1 && parseVolume("150") == 1.5 && parseVolume("301") == nil && parseVolume("x") == nil)
 }
