@@ -49,6 +49,9 @@ final class Prefs: ObservableObject {
     @Published var shelfClear: ShelfClear { didSet { d.set(shelfClear.rawValue, forKey: "shelf.clear") } }
     @Published var shelfHours: Int { didSet { d.set(shelfHours, forKey: "shelf.hours") } }
     @Published var safariDir: String { didSet { d.set(safariDir, forKey: "safari.dir") } }
+    // Claude-Teilfunktionen, standardmäßig aus
+    @Published var claudePermissions: Bool { didSet { d.set(claudePermissions, forKey: "claude.permissions") } }
+    @Published var claudeUsage: Bool { didSet { d.set(claudeUsage, forKey: "claude.usage") } }
 
     enum ShelfClear: String, CaseIterable { case restart, interval }
 
@@ -57,6 +60,8 @@ final class Prefs: ObservableObject {
         shelfClear = ShelfClear(rawValue: d.string(forKey: "shelf.clear") ?? "") ?? .restart
         shelfHours = max(1, d.integer(forKey: "shelf.hours") == 0 ? 1 : d.integer(forKey: "shelf.hours"))
         safariDir = d.string(forKey: "safari.dir") ?? ""
+        claudePermissions = d.bool(forKey: "claude.permissions")
+        claudeUsage = d.bool(forKey: "claude.usage")
     }
 
     func isOn(_ f: Feature) -> Bool { enabled.contains(f) }

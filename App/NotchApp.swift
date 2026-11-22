@@ -35,7 +35,9 @@ final class AppState: ObservableObject {
 
     // Claude
     @Published var claude: [ClaudeSession] = []
-    private let monitor = ClaudeMonitor()
+    @Published var claudePermissions: [ClaudePermission] = []   // Freigaben, siehe ClaudeView.swift
+    @Published var claudeUsage: ClaudeUsage?
+    let monitor = ClaudeMonitor()
     private var lastClaudeStates: [String: String]?
 
     /// Tabs der eingeschalteten Funktionen in fester Reihenfolge.
@@ -112,6 +114,7 @@ final class AppState: ObservableObject {
     }
 
     func refreshClaude() {
+        defer { refreshClaudeExtras() }
         guard prefs.isOn(.claude) else { claude = []; lastClaudeStates = nil; return }
         let list = monitor.load()
         if list != claude { claude = list }
