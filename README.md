@@ -23,11 +23,12 @@ Fährst du mit der Maus an die Notch, klappt ein Panel auf. Ohne Notch erscheint
 - **Lautstärke:** oben die Gesamtlautstärke, darunter ein Regler für jede App, die gerade Ton abspielt (0–300 %). Über 100 % wird die App lauter als normal, die Zahl wird dann orange. Bei 100 % rastet der Regler ein und der Tap wird wieder entfernt.
 - **Ausgabegerät:** oben im Lautstärke-Tab eine Auswahl aller Ausgabegeräte (Lautsprecher, Kopfhörer, AirPods, Monitor …). Wechselt das Gerät, ob per Auswahl oder weil du AirPods verbindest, legt AppVol die geänderten App-Lautstärken auf dem neuen Gerät neu an.
 - **Musik:** Titel, Interpret und Cover dessen, was gerade läuft (Musik, Spotify, Browser, Podcasts …), mit Play/Pause, Vor und Zurück. Keine Einrichtung nötig, Details unten.
-- **Claude:** Status aller Claude-Code-Sitzungen (arbeitet / Rückfrage / fertig). Neben der Notch zeigen ein Symbol und eine Zahl, wie viele Sitzungen aktiv sind. Wird eine Sitzung fertig oder braucht sie dich, klappt die Notch für 6 Sekunden von selbst auf. Ein Klick springt direkt in den passenden Chat der Claude-App (`claude://code/continue?session=…`). Voraussetzung sind die Hooks unten.
-- **Ablage:** Dateien auf die Notch ziehen, später wieder herausziehen. Rechtsklick zeigt die Datei im Finder oder entfernt sie aus der Ablage. Die Ablage merkt sich die Dateien nur, solange die App läuft.
+- **Claude:** Status aller Claude-Code-Sitzungen (arbeitet / Rückfrage / fertig). Neben der Notch zeigen ein Symbol und eine Zahl, wie viele Sitzungen aktiv sind. Wird eine Sitzung fertig oder braucht sie dich, klappt die Notch für 6 Sekunden von selbst auf. Ein Klick springt direkt in den passenden Chat der Claude-App (`claude://code/continue?session=…`). Voraussetzung sind die Hooks unten. Optional: Freigaben direkt in der Notch und Anzeige der Claude-Limits.
+- **Ablage:** Dateien auf die Notch ziehen, später wieder herausziehen. Rechtsklick zeigt die Datei im Finder oder entfernt sie aus der Ablage. Die Ablage wird standardmäßig beim Systemneustart geleert, alternativ nach einem einstellbaren Intervall (Einstellungen). Gelöscht werden nur Einträge und von AppVol selbst erzeugte Dateien, nie deine Originale.
 - **Home Assistant:** gewählte Geräte und Sensoren deines Home Assistant als Kacheln, optional bis zu 2 Sensorwerte neben der Notch. Standardmäßig aus, Einrichtung unten.
 - **Transkript** (standardmäßig aus): Video oder Audio auf die Notch ziehen, während der Tab Transkript offen ist. Das Transkript entsteht lokal, landet als `.txt` in der Ablage und auf Wunsch in der Zwischenablage. Einrichtung siehe unten.
-- **Schalter:** alle Lautstärken zurücksetzen, App beenden. Gibt es `~/mcp/safari`, kommt zusätzlich ein Zeitschalter für einen lokalen Safari-MCP-Server dazu.
+- **Safari-MCP** (standardmäßig aus): Zeitschalter für den [Safari-MCP](https://github.com/rj6zs826fn-web/safari-mcp). In den Einstellungen den Ordner des Servers wählen.
+- **Einstellungen:** Zahnrad im Panel oder Menüleisten-Symbol. Jede Funktion lässt sich einzeln ein- und ausschalten.
 
 Vorschau ohne Maus, zum Beispiel für Screenshots:
 ```sh
@@ -35,9 +36,17 @@ APPVOL_PREVIEW=volume ./AppVol.app/Contents/MacOS/AppVol   # volume | media | cl
 ```
 
 ## Claude-Status einrichten
-`claude-status-hook.py` schreibt pro Sitzung eine Statusdatei nach `~/Library/Application Support/AppVol/claude/`. Trag ihn in `~/.claude/settings.json` für `UserPromptSubmit`, `PostToolUse` (matcher `*`), `Notification`, `Stop` und `SessionEnd` ein:
+Einstellungen → Funktionen → **Claude** einschalten → **„Claude-Status einrichten“**. Der Knopf
+1. kopiert `claude-status-hook.py` aus der App nach `~/Library/Application Support/AppVol/`,
+2. legt eine Sicherungskopie von `~/.claude/settings.json` an (`settings.json.appvol-<Datum>.bak`),
+3. trägt den Hook für `UserPromptSubmit`, `PostToolUse` (matcher `*`), `Notification`, `Stop` und `SessionEnd` ein (`async: true`, `timeout: 5`), dazu `PermissionRequest` für die Freigaben (siehe unten),
+4. schreibt die Datei atomar. Deine anderen Einstellungen und fremden Hooks bleiben erhalten, nichts wird doppelt eingetragen.
+
+**„Entfernen“** löscht nur die Einträge, die `claude-status-hook.py` aufrufen. Ältere, von Hand eingetragene Einträge mit diesem Skript (anderer Pfad) werden beim Einrichten ersetzt. Die Änderungen gelten für neu gestartete Claude-Sitzungen.
+
+Von Hand geht es auch, ein Eintrag sieht so aus:
 ```json
-{ "type": "command", "command": "python3 -I \"$HOME/Developer/appvol/claude-status-hook.py\"", "timeout": 5, "async": true }
+{ "type": "command", "command": "python3 -I \"$HOME/Library/Application Support/AppVol/claude-status-hook.py\"", "timeout": 5, "async": true }
 ```
 Titel und Direktlink liest AppVol aus den Sitzungsdateien der Claude-Desktop-App. Das ist ein internes Format: Ändert es sich, fehlen nur Titel und Direktlink, der Status funktioniert weiter.
 
@@ -79,6 +88,25 @@ Seit macOS 15.4 lässt Apple fremde Apps nicht mehr an das private MediaRemote-F
 - Keine Freigabe nötig, deshalb ist die Funktion standardmäßig an.
 
 Grenze: Das ist ein Umweg um eine Sperre von Apple. Schließt ein macOS-Update ihn, zeigt der Musik-Tab einen Hinweis statt der Wiedergabe. Dann hilft meist eine neuere Version des Adapters (Ordner in `vendor/` ersetzen, neu bauen) oder die Funktion in den Einstellungen abschalten.
+### Freigaben in der Notch (Schalter, standardmäßig aus)
+Fragt Claude, ob es ein Werkzeug benutzen darf (z. B. einen Befehl ausführen), klappt die Notch mit **Erlauben** / **Ablehnen** auf.
+- Grundlage ist der offizielle `PermissionRequest`-Hook von Claude Code. Laut Doku läuft er überall, wo Claude Code läuft, auch in der Desktop-App. Dort gilt die Antwort, die zuerst kommt: Notch oder Claudes eigener Dialog.
+- Ablauf: Der Hook legt die Anfrage (Werkzeug, Kurzbeschreibung, Ordner) mit einer zufälligen ID in `~/Library/Application Support/AppVol/claude/permissions/` ab und wartet höchstens 60 s auf die Antwortdatei der App. Kommt keine, gibt er nichts zurück, und Claude fragt wie gewohnt. Im Terminal erscheint der Dialog dann erst nach dieser Wartezeit.
+- Der Hook wartet nur, solange AppVol läuft und der Schalter an ist (AppVol erneuert dafür alle paar Sekunden `permissions/.alive`). Sonst kehrt er sofort zurück.
+- Sicherheit: Es wird nie automatisch erlaubt, nur auf deinen Klick, und nur einmal. Dauerhafte Regeln (`updatedPermissions`) werden nie gesetzt. Der Ordner hat die Rechte 700, Antwortdateien 600. Der Hook nimmt eine Antwort nur an, wenn sie dir gehört, für niemanden sonst lesbar ist, keine Verknüpfung ist und die passende Anfrage-ID enthält.
+
+### Nutzung anzeigen (Schalter, standardmäßig aus)
+Zeigt im Claude-Tab z. B. „5-h-Limit 42 %  7-Tage-Limit 12 %“ (ab 70 % orange, ab 90 % rot).
+- Quelle sind die offiziell dokumentierten Felder `rate_limits.five_hour` und `rate_limits.seven_day`, die Claude Code einem **statusLine**-Befehl übergibt. Es werden keine inoffiziellen Schnittstellen und keine Zugangsdaten aus dem Schlüsselbund benutzt.
+- Einrichten per Knopf **„statusLine einrichten“** (unter dem Schalter). Hast du schon eine eigene `statusLine`, bricht AppVol mit einem Hinweis ab und überschreibt sie nicht. Du kannst dann in deinem eigenen Skript die Eingabe zusätzlich an `python3 -I "$HOME/Library/Application Support/AppVol/claude-status-hook.py" statusline` weiterreichen.
+- Grenzen: Die Werte gibt es nur für Pro-, Max- und Ultra-Abos und erst nach der ersten Antwort einer Sitzung. Die statusLine läuft in Claude Code im Terminal. Ob die Desktop-App sie ausführt, ist nicht dokumentiert. Die Anzeige verschwindet, wenn das Zeitfenster abgelaufen ist.
+
+### Testen ohne echte Einstellungen
+```sh
+APPVOL_CLAUDE_SETTINGS=/tmp/test/settings.json   # andere settings.json für die Knöpfe
+APPVOL_CLAUDE_DIR=/tmp/test/claude               # andere Status-, Freigabe- und Nutzungsdateien (App und Hook)
+```
+`./build.sh` führt die Selbsttests aus: `tests/ClaudeSetupTest.swift` (Zusammenführen mit fremden Hooks und anderen Schlüsseln, Entfernen, statusLine, Antwortdatei) und `tests/test_hook.py` (Freigabe erlauben, ablehnen und ignorieren, statusLine).
 
 ## Nutzung
 ```sh

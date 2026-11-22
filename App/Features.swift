@@ -60,6 +60,9 @@ final class Prefs: ObservableObject {
     @Published var transcribeModel: String { didSet { d.set(transcribeModel, forKey: "transcribe.model") } }
     @Published var transcribeLang: String { didSet { d.set(transcribeLang, forKey: "transcribe.lang") } }
     @Published var transcribeCopy: Bool { didSet { d.set(transcribeCopy, forKey: "transcribe.copy") } }
+    // Claude-Teilfunktionen, standardmäßig aus
+    @Published var claudePermissions: Bool { didSet { d.set(claudePermissions, forKey: "claude.permissions") } }
+    @Published var claudeUsage: Bool { didSet { d.set(claudeUsage, forKey: "claude.usage") } }
 
     enum ShelfClear: String, CaseIterable { case restart, interval }
 
@@ -71,6 +74,8 @@ final class Prefs: ObservableObject {
         transcribeModel = d.string(forKey: "transcribe.model") ?? ""
         transcribeLang = d.string(forKey: "transcribe.lang") ?? "auto"
         transcribeCopy = d.bool(forKey: "transcribe.copy")
+        claudePermissions = d.bool(forKey: "claude.permissions")
+        claudeUsage = d.bool(forKey: "claude.usage")
     }
 
     func isOn(_ f: Feature) -> Bool { enabled.contains(f) }
