@@ -13,6 +13,21 @@ Ein kleines Kommandozeilen-Tool (eine Swift-Datei), ohne Treiber und ohne Kernel
 ```sh
 ./build.sh
 ```
+Das baut das Kommandozeilen-Tool `appvol` und die Notch-App `AppVol.app`.
+
+## Notch-App
+```sh
+open AppVol.app
+```
+Fährst du mit der Maus an die Notch, klappt ein Panel auf. Ohne Notch erscheint oben in der Mitte eine schwarze Pseudo-Notch. Dasselbe Panel gibt es auch über das Symbol in der Menüleiste.
+- **Lautstärke:** ein Regler für jede App, die gerade Ton abspielt. Bei 100 % wird der Tap wieder entfernt.
+- **Ablage:** Dateien auf die Notch ziehen, später wieder herausziehen. Rechtsklick zeigt die Datei im Finder oder entfernt sie aus der Ablage. Die Ablage merkt sich die Dateien nur, solange die App läuft.
+- **Schalter:** alle Lautstärken zurücksetzen, App beenden. Gibt es `~/mcp/safari`, kommt zusätzlich ein Zeitschalter für einen lokalen Safari-MCP-Server dazu.
+
+Vorschau ohne Maus, zum Beispiel für Screenshots:
+```sh
+APPVOL_PREVIEW=volume ./AppVol.app/Contents/MacOS/AppVol   # volume | shelf | switches
+```
 
 ## Nutzung
 ```sh
