@@ -5,13 +5,15 @@
 import SwiftUI
 
 enum Feature: String, CaseIterable, Identifiable {
-    case volume, claude, shelf, transcribe, safari, homeassistant
+    case volume, outputDevice, media, claude, shelf, transcribe, safari, homeassistant
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .volume: "Lautstärke"
+        case .outputDevice: "Ausgabegerät"
+        case .media: "Musik"
         case .claude: "Claude"
         case .shelf: "Ablage"
         case .transcribe: "Transkript"
@@ -23,6 +25,8 @@ enum Feature: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .volume: "Gesamtlautstärke und Lautstärke pro App (0–300 %)"
+        case .outputDevice: "Ausgabegerät oben im Lautstärke-Tab wechseln"
+        case .media: "Was gerade läuft (Musik, Spotify, Browser …) mit Cover, Play/Pause, Vor/Zurück"
         case .claude: "Status deiner Claude-Code-Sitzungen, Aufploppen bei fertig/Rückfrage"
         case .shelf: "Dateien per Drag & Drop kurz in der Notch ablegen"
         case .transcribe: "Video oder Audio auf die Notch ziehen → lokales Transkript (whisper.cpp)"
@@ -34,13 +38,13 @@ enum Feature: String, CaseIterable, Identifiable {
     /// Ohne Einrichtung nutzlose Funktionen sind standardmäßig aus.
     var defaultOn: Bool {
         switch self {
-        case .volume, .shelf: true
+        case .volume, .outputDevice, .media, .shelf: true
         case .claude, .safari, .homeassistant, .transcribe: false
         }
     }
 
     /// Hat einen eigenen Tab im Panel (sonst nur Einstellungen / Anzeige neben der Notch).
-    var hasTab: Bool { true }
+    var hasTab: Bool { self != .outputDevice }
 }
 
 /// Lokale Einstellungen (UserDefaults). Persönliche Werte landen nur hier, nie im Code.
