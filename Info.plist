@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.appvol</string>
+    <key>CFBundleName</key>
+    <string>appvol</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>appvol greift den Ton einer App ab, um ihre Lautstärke zu ändern.</string>
+</dict>
+</plist>
