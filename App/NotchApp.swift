@@ -21,6 +21,7 @@ final class AppState: ObservableObject {
     let prefs = Prefs.shared
     let shelf = ShelfStore()
     let safari = SafariSwitch()
+    let transcriber = Transcriber.shared
 
     @Published var expanded = false
     @Published var tab: Feature = .volume
@@ -44,6 +45,7 @@ final class AppState: ObservableObject {
     init() {
         refresh()
         refreshClaude()
+        transcriber.onDone = { [weak self] url in self?.shelf.add([url]); self?.popup(.transcribe) }
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in Task { @MainActor in self.refresh() } }
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in Task { @MainActor in self.refreshClaude() } }
     }
@@ -140,6 +142,13 @@ final class AppState: ObservableObject {
     }
 
     func addToShelf(_ urls: [URL]) {
+        var urls = urls
+        // Transkript-Tab offen: Audio/Video wird transkribiert statt abgelegt
+        if prefs.isOn(.transcribe), tab == .transcribe {
+            transcriber.enqueue(urls.filter(Transcriber.isMedia))
+            urls.removeAll(where: Transcriber.isMedia)
+            if urls.isEmpty { return }
+        }
         guard prefs.isOn(.shelf) else { return }
         shelf.add(urls)
         tab = .shelf
@@ -158,6 +167,7 @@ struct FeatureTab: View {
         case .volume: VolumeView(state: state)
         case .claude: ClaudeListView(state: state)
         case .shelf: ShelfView(store: state.shelf)
+        case .transcribe: TranscribeView(t: state.transcriber)
         case .safari: SafariView(sw: state.safari)
         case .homeassistant: HomeAssistantView()
         }
@@ -174,6 +184,7 @@ struct FeatureSettings: View {
         case .safari: SafariSettings()
         case .claude: ClaudeSettings()
         case .homeassistant: HomeAssistantSettings()
+        case .transcribe: TranscribeSettings()
         case .volume: EmptyView()
         }
     }
@@ -425,10 +436,11 @@ final class NotchController {
         }
         if !state.expanded {
             panel.ignoresMouseEvents = true  // eingeklappt: Klicks gehen an die Menüleiste darunter
-            let wing = state.claudeBadge == nil ? 8 : NotchView.wing + 8
+            // Hover-Zone schließt die Anzeige links/rechts der Notch ein (Claude bzw. Home-Assistant-Werte)
+            let wing = state.claudeBadge != nil ? NotchView.wing + 8 : HAStore.shared.wings.isEmpty ? 8 : HAStore.wingWidth + 8
             guard notchRect.insetBy(dx: -wing, dy: -2).contains(p) else { return }
-            // Beim Ziehen von Dateien gleich die Ablage zeigen
-            if dragging, state.prefs.isOn(.shelf),
+            // Beim Ziehen von Dateien gleich die Ablage zeigen – außer der Transkript-Tab ist offen
+            if dragging, state.tab != .transcribe, state.prefs.isOn(.shelf),
                NSPasteboard(name: .drag).canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
                 state.tab = .shelf
             }
@@ -454,6 +466,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         MainActor.assumeIsolated {
+            if let f = ProcessInfo.processInfo.environment["APPVOL_TRANSCRIBE"] { Transcriber.selfTest(f); return }
             notch = NotchController(state: AppDelegate.state)
             // Vorschau für Screenshots: APPVOL_PREVIEW=<Funktion, z.B. volume> hält das Panel offen
             if let t = ProcessInfo.processInfo.environment["APPVOL_PREVIEW"], let f = Feature(rawValue: t) {
