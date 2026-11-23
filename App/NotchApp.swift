@@ -222,10 +222,24 @@ struct PanelContent: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 if state.tabs.count > 1 {
-                    Picker("", selection: $state.tab) {
-                        ForEach(state.tabs) { Text($0.title).tag($0) }
+                    HStack(spacing: 4) {
+                        ForEach(state.tabs) { f in
+                            let on = f == state.tab
+                            Button { state.tab = f } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: f.icon)
+                                    if on { Text(f.title).lineLimit(1) }
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(on ? Color.white.opacity(0.14) : .clear, in: Capsule())
+                                .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(on ? .primary : .secondary)
+                            .help(f.title).accessibilityLabel(f.title)
+                        }
                     }
-                    .pickerStyle(.segmented).labelsHidden()
+                    .animation(.snappy(duration: 0.2), value: state.tab)
                 }
                 Spacer(minLength: 0)
                 SettingsLink { Image(systemName: "gearshape") }

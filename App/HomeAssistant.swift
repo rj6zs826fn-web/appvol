@@ -200,7 +200,7 @@ struct HomeAssistantView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let e = store.error { Text(e).font(.caption).foregroundStyle(.red).lineLimit(2) }
+            if let e = store.error, !store.url.isEmpty { Text(e).font(.caption).foregroundStyle(.red).lineLimit(2) }
             if store.tiles.isEmpty {
                 Text(store.url.isEmpty ? "Home Assistant ist noch nicht eingerichtet (Einstellungen → Home Assistant)."
                                        : "Keine Entitäten gewählt (Einstellungen → Home Assistant).")
@@ -296,7 +296,7 @@ struct HomeAssistantSettings: View {
                 if !tokenInput.isEmpty { store.setToken(tokenInput); tokenInput = "" }
                 store.refresh()
             }
-            if let e = store.error { Text(e).font(.caption).foregroundStyle(.red) }
+            if let e = store.error, !store.url.isEmpty { Text(e).font(.caption).foregroundStyle(.red) }
             else if !store.entities.isEmpty { Text("Verbunden, \(store.entities.count) Entitäten").font(.caption).foregroundStyle(.green) }
         }
         if !store.entities.isEmpty {

@@ -35,6 +35,20 @@ enum Feature: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Symbol im Tab (SF Symbols); nur der aktive Tab zeigt zusätzlich den Titel, damit alle in die Notch passen.
+    var icon: String {
+        switch self {
+        case .volume: "speaker.wave.2.fill"
+        case .outputDevice: "hifispeaker.2"
+        case .media: "music.note"
+        case .claude: "sparkle"
+        case .shelf: "tray.full"
+        case .transcribe: "waveform"
+        case .safari: "safari"
+        case .homeassistant: "house"
+        }
+    }
+
     /// Ohne Einrichtung nutzlose Funktionen sind standardmäßig aus.
     var defaultOn: Bool {
         switch self {
@@ -67,7 +81,8 @@ final class Prefs: ObservableObject {
     enum ShelfClear: String, CaseIterable { case restart, interval }
 
     private init() {
-        enabled = Set(Feature.allCases.filter { (UserDefaults.standard.object(forKey: "feature.\($0.rawValue)") as? Bool) ?? $0.defaultOn })
+        // bool(forKey:) versteht auch "YES" aus Startargumenten (-feature.claude YES)
+        enabled = Set(Feature.allCases.filter { UserDefaults.standard.object(forKey: "feature.\($0.rawValue)") == nil ? $0.defaultOn : UserDefaults.standard.bool(forKey: "feature.\($0.rawValue)") })
         shelfClear = ShelfClear(rawValue: d.string(forKey: "shelf.clear") ?? "") ?? .restart
         shelfHours = max(1, d.integer(forKey: "shelf.hours") == 0 ? 1 : d.integer(forKey: "shelf.hours"))
         safariDir = d.string(forKey: "safari.dir") ?? ""
