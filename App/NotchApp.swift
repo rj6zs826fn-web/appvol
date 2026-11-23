@@ -239,7 +239,7 @@ struct PanelContent: View {
                             .help(f.title).accessibilityLabel(f.title)
                         }
                     }
-                    .animation(.snappy(duration: 0.2), value: state.tab)
+                    .animation(.smooth(duration: 0.3), value: state.tab)
                 }
                 Spacer(minLength: 0)
                 SettingsLink { Image(systemName: "gearshape") }
@@ -403,8 +403,8 @@ struct NotchView: View {
                     .padding(.top, notch.height - 6)
                     .padding(.horizontal, ear)
                     .frame(width: panel.width, height: panel.height, alignment: .top)
-                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.12)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.08))))
+                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.16)),
+                                            removal: .opacity.animation(.easeIn(duration: 0.14))))
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
@@ -413,9 +413,9 @@ struct NotchView: View {
         .shadow(color: .black.opacity(open ? 0.45 : 0), radius: 14, y: 6)
         .environment(\.colorScheme, .dark)
         .frame(width: panel.width + 40, height: panel.height + 30, alignment: .top)
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: open)
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: badge == nil)
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: haWings.isEmpty)
+        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: open)
+        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: badge == nil)
+        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: haWings.isEmpty)
     }
 }
 
