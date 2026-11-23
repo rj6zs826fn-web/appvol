@@ -365,11 +365,23 @@ struct NotchShape: Shape {
     }
 }
 
+/// Übergang für den Panel-Inhalt: p = 0 klein, unscharf, unsichtbar; p = 1 normal.
+struct NotchReveal: ViewModifier {
+    let p: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(0.86 + 0.14 * p, anchor: .top)
+            .blur(radius: 12 * (1 - p))
+            .opacity(p)
+    }
+}
+
 struct NotchView: View {
     @ObservedObject var state: AppState
     @ObservedObject var ha = HAStore.shared
     let notch: CGSize
     let panel: CGSize
+    static let morph = Animation.spring(duration: 0.55, bounce: 0.18)  // leichtes Nachfedern wie bei Apple
     static let wing: CGFloat = 34   // Breite der Anzeige links/rechts der Notch
 
     var body: some View {
@@ -403,8 +415,12 @@ struct NotchView: View {
                     .padding(.top, notch.height - 6)
                     .padding(.horizontal, ear)
                     .frame(width: panel.width, height: panel.height, alignment: .top)
-                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.3).delay(0.16)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.14))))
+                    // wie die Dynamic Island: Inhalt wächst unscharf aus der Notch und wird erst scharf, wenn die Form fast offen ist
+                    .transition(.asymmetric(
+                        insertion: .modifier(active: NotchReveal(p: 0), identity: NotchReveal(p: 1))
+                            .animation(.smooth(duration: 0.42).delay(0.14)),
+                        removal: .modifier(active: NotchReveal(p: 0), identity: NotchReveal(p: 1))
+                            .animation(.smooth(duration: 0.18))))
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
@@ -413,9 +429,9 @@ struct NotchView: View {
         .shadow(color: .black.opacity(open ? 0.45 : 0), radius: 14, y: 6)
         .environment(\.colorScheme, .dark)
         .frame(width: panel.width + 40, height: panel.height + 30, alignment: .top)
-        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: open)
-        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: badge == nil)
-        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: haWings.isEmpty)
+        .animation(Self.morph, value: open)
+        .animation(Self.morph, value: badge == nil)
+        .animation(Self.morph, value: haWings.isEmpty)
     }
 }
 
