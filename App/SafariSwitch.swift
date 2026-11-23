@@ -23,7 +23,20 @@ final class SafariSwitch: ObservableObject {
         let v = minutes.map { Date().timeIntervalSince1970 + $0 * 60 } ?? 0
         try? String(v).write(to: f, atomically: true, encoding: .utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: f.path)  // nur der Nutzer
+        if minutes == nil { closeClaudeWindow(dir: f.deletingLastPathComponent()) }
         refresh()
+    }
+
+    /// `server.py off` schließt zusätzlich Claudes eigenes Safari-Fenster. Aus ist oben schon geschrieben,
+    /// das hier ist nur Aufräumen: fehlt python3 oder server.py, bleibt nur das Fenster offen.
+    private func closeClaudeWindow(dir: URL) {
+        let script = dir.appendingPathComponent("server.py")
+        guard FileManager.default.fileExists(atPath: script.path) else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.arguments = ["-I", script.path, "off"]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        try? p.run()
     }
 }
 

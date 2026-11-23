@@ -27,7 +27,7 @@ Fährst du mit der Maus an die Notch, klappt ein Panel auf. Ohne Notch erscheint
 - **Ablage:** Dateien auf die Notch ziehen, später wieder herausziehen. Rechtsklick zeigt die Datei im Finder oder entfernt sie aus der Ablage. Die Ablage wird standardmäßig beim Systemneustart geleert, alternativ nach einem einstellbaren Intervall (Einstellungen). Gelöscht werden nur Einträge und von AppVol selbst erzeugte Dateien, nie deine Originale.
 - **Home Assistant:** gewählte Geräte und Sensoren deines Home Assistant als Kacheln, optional bis zu 2 Sensorwerte neben der Notch. Standardmäßig aus, Einrichtung unten.
 - **Transkript** (standardmäßig aus): Video oder Audio auf die Notch ziehen, während der Tab Transkript offen ist. Das Transkript entsteht lokal, landet als `.txt` in der Ablage und auf Wunsch in der Zwischenablage. Einrichtung siehe unten.
-- **Safari-MCP** (standardmäßig aus): Zeitschalter für den [Safari-MCP](https://github.com/rj6zs826fn-web/safari-mcp). In den Einstellungen den Ordner des Servers wählen.
+- **Safari-MCP** (standardmäßig aus): Zeitschalter für den [Safari-MCP](https://github.com/rj6zs826fn-web/safari-mcp). In den Einstellungen den Ordner des Servers wählen. „30 Min“/„60 Min“ schreiben `.enabled_until` (Unix-Zeit, nur für dich lesbar), „Aus“ setzt sie auf 0 und ruft `python3 server.py off` auf, das auch Claudes eigenes Safari-Fenster schließt. Ohne `server.py` im Ordner bleibt das Fenster offen, der Zugriff ist trotzdem aus.
 - **Einstellungen:** Zahnrad im Panel oder Menüleisten-Symbol. Jede Funktion lässt sich einzeln ein- und ausschalten.
 
 Vorschau ohne Maus, zum Beispiel für Screenshots:
