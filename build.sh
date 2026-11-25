@@ -17,6 +17,13 @@ python3 -I tests/test_hook.py claude-status-hook.py
 rm -rf AppVol.app
 mkdir -p AppVol.app/Contents/MacOS AppVol.app/Contents/Resources
 cp App/Info.plist AppVol.app/Contents/Info.plist
+# Icon: App/AppIcon.png (1024+) -> AppIcon.icns
+I=$(mktemp -d)/AppIcon.iconset; mkdir -p "$I"
+for n in 16 32 128 256 512; do
+  sips -z $n $n App/AppIcon.png --out "$I/icon_${n}x${n}.png" >/dev/null
+  sips -z $((n*2)) $((n*2)) App/AppIcon.png --out "$I/icon_${n}x${n}@2x.png" >/dev/null
+done
+iconutil -c icns "$I" -o AppVol.app/Contents/Resources/AppIcon.icns
 cp claude-status-hook.py AppVol.app/Contents/Resources/  # „Claude-Status einrichten“ kopiert es von hier
 swiftc -O -parse-as-library Core.swift App/*.swift -o AppVol.app/Contents/MacOS/AppVol
 

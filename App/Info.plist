@@ -4,6 +4,8 @@
 <dict>
     <key>CFBundleIdentifier</key>
     <string>io.github.appvol.notch</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
     <string>AppVol</string>
     <key>CFBundleExecutable</key>

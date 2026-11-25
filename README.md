@@ -13,7 +13,8 @@ Ein kleines Kommandozeilen-Tool (eine Swift-Datei), ohne Treiber und ohne Kernel
 ```sh
 ./build.sh
 ```
-Das baut das Kommandozeilen-Tool `appvol` und die Notch-App `AppVol.app`.
+Das baut das Kommandozeilen-Tool `appvol` und die Notch-App `AppVol.app` (mit Icon aus `App/AppIcon.png`).
+Damit AppVol im Launchpad erscheint, kopiere die App nach `/Applications`: `cp -R AppVol.app /Applications/`.
 
 ## Notch-App
 ```sh
