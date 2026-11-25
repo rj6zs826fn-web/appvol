@@ -390,9 +390,9 @@ struct NotchView: View {
         let badge = state.claudeBadge
         let open = state.expanded
         let ear: CGFloat = open ? 14 : 6
-        let charge = badge == nil ? power.label : nil  // Vorrang: Claude, dann Laden, dann Home Assistant
+        let charge = power.label  // beim Laden immer sichtbar, neben Claude oder allein; verdrängt die Home-Assistant-Werte
         let haWings = badge == nil && charge == nil ? ha.wings : []
-        let wing = badge != nil ? Self.wing : charge != nil ? Self.chargeWing : haWings.isEmpty ? 0 : HAStore.wingWidth
+        let wing = badge != nil ? Self.wing + (charge != nil ? Self.chargeWing : 0) : charge != nil ? Self.chargeWing : haWings.isEmpty ? 0 : HAStore.wingWidth
         let size = open ? panel : CGSize(width: notch.width + 2 * ear + 2 * wing, height: notch.height)
         let shape = NotchShape(top: ear, bottom: open ? 24 : 10)
 
@@ -402,16 +402,21 @@ struct NotchView: View {
                     Image(systemName: "sparkle").foregroundStyle(b.working ? .orange : b.color)
                         .symbolEffect(.pulse, isActive: b.working)
                         .frame(width: Self.wing)
+                    if charge != nil { Image(systemName: "bolt.fill").foregroundStyle(.green).frame(width: Self.chargeWing) }
                     Spacer(minLength: notch.width)
                     Text("\(b.count)").font(.system(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(b.color)
                         .frame(width: Self.wing)
+                    if let c = charge {
+                        Text(c).font(.system(size: 11, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
+                            .lineLimit(1).minimumScaleFactor(0.6).frame(width: Self.chargeWing)
+                    }
                 }
                 .padding(.horizontal, ear)
                 .frame(width: size.width, height: notch.height)
                 .transition(.opacity)
                 .accessibilityLabel("\(b.count) Claude-Sitzungen")
             }
-            if !open, let c = charge {
+            if !open, badge == nil, let c = charge {
                 HStack(spacing: 0) {
                     Image(systemName: "bolt.fill").foregroundStyle(.green).frame(width: Self.chargeWing)
                     Spacer(minLength: notch.width)
@@ -513,8 +518,9 @@ final class NotchController {
         if !state.expanded {
             panel.ignoresMouseEvents = true  // eingeklappt: Klicks gehen an die Menüleiste darunter
             // Hover-Zone schließt die Anzeige links/rechts der Notch ein (Claude bzw. Home-Assistant-Werte)
-            let wing = state.claudeBadge != nil ? NotchView.wing + 8 : PowerStore.shared.label != nil ? NotchView.chargeWing + 8 : HAStore.shared.wings.isEmpty ? 8 : HAStore.wingWidth + 8
-            guard notchRect.insetBy(dx: -wing, dy: -2).contains(p) else { return }
+            let wing = (state.claudeBadge != nil ? NotchView.wing + 8 : 0) + (PowerStore.shared.label != nil ? NotchView.chargeWing + (state.claudeBadge != nil ? 0 : 8) : 0)
+            let hover = wing > 0 ? wing : HAStore.shared.wings.isEmpty ? 8 : HAStore.wingWidth + 8
+            guard notchRect.insetBy(dx: -hover, dy: -2).contains(p) else { return }
             // Beim Ziehen von Dateien gleich die Ablage zeigen – außer der Transkript-Tab ist offen
             if dragging, state.tab != .transcribe, state.prefs.isOn(.shelf),
                NSPasteboard(name: .drag).canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
