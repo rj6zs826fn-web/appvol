@@ -188,7 +188,7 @@ struct FeatureTab: View {
         switch feature {
         case .volume: VolumeView(state: state)
         case .media: MediaView(media: state.media)
-        case .outputDevice: EmptyView()  // kein eigener Tab, steckt im Lautstärke-Tab
+        case .outputDevice, .charging: EmptyView()  // kein eigener Tab
         case .claude: ClaudeListView(state: state)
         case .shelf: ShelfView(store: state.shelf)
         case .transcribe: TranscribeView(t: state.transcriber)
@@ -209,7 +209,7 @@ struct FeatureSettings: View {
         case .claude: ClaudeSettings()
         case .homeassistant: HomeAssistantSettings()
         case .transcribe: TranscribeSettings()
-        case .volume, .outputDevice, .media: EmptyView()
+        case .volume, .outputDevice, .media, .charging: EmptyView()
         }
     }
 }
@@ -379,17 +379,20 @@ struct NotchReveal: ViewModifier {
 struct NotchView: View {
     @ObservedObject var state: AppState
     @ObservedObject var ha = HAStore.shared
+    @ObservedObject var power = PowerStore.shared
     let notch: CGSize
     let panel: CGSize
     static let morph = Animation.spring(duration: 0.55, bounce: 0.18)  // leichtes Nachfedern wie bei Apple
     static let wing: CGFloat = 34   // Breite der Anzeige links/rechts der Notch
+    static let chargeWing: CGFloat = 48
 
     var body: some View {
         let badge = state.claudeBadge
         let open = state.expanded
         let ear: CGFloat = open ? 14 : 6
-        let haWings = badge == nil ? ha.wings : []  // Claude hat Vorrang neben der Notch
-        let wing = badge != nil ? Self.wing : haWings.isEmpty ? 0 : HAStore.wingWidth
+        let charge = badge == nil ? power.label : nil  // Vorrang: Claude, dann Laden, dann Home Assistant
+        let haWings = badge == nil && charge == nil ? ha.wings : []
+        let wing = badge != nil ? Self.wing : charge != nil ? Self.chargeWing : haWings.isEmpty ? 0 : HAStore.wingWidth
         let size = open ? panel : CGSize(width: notch.width + 2 * ear + 2 * wing, height: notch.height)
         let shape = NotchShape(top: ear, bottom: open ? 24 : 10)
 
@@ -407,6 +410,19 @@ struct NotchView: View {
                 .frame(width: size.width, height: notch.height)
                 .transition(.opacity)
                 .accessibilityLabel("\(b.count) Claude-Sitzungen")
+            }
+            if !open, let c = charge {
+                HStack(spacing: 0) {
+                    Image(systemName: "bolt.fill").foregroundStyle(.green).frame(width: Self.chargeWing)
+                    Spacer(minLength: notch.width)
+                    Text(c).font(.system(size: 11, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
+                        .lineLimit(1).minimumScaleFactor(0.6).frame(width: Self.chargeWing)
+                }
+                .padding(.horizontal, ear)
+                .frame(width: size.width, height: notch.height)
+                .transition(.opacity)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Lädt mit \(c)")
             }
             if !open, !haWings.isEmpty { HANotchWings(values: haWings, notch: notch, ear: ear, width: size.width) }
             if open {
@@ -432,6 +448,7 @@ struct NotchView: View {
         .animation(Self.morph, value: open)
         .animation(Self.morph, value: badge == nil)
         .animation(Self.morph, value: haWings.isEmpty)
+        .animation(Self.morph, value: charge == nil)
     }
 }
 
@@ -496,7 +513,7 @@ final class NotchController {
         if !state.expanded {
             panel.ignoresMouseEvents = true  // eingeklappt: Klicks gehen an die Menüleiste darunter
             // Hover-Zone schließt die Anzeige links/rechts der Notch ein (Claude bzw. Home-Assistant-Werte)
-            let wing = state.claudeBadge != nil ? NotchView.wing + 8 : HAStore.shared.wings.isEmpty ? 8 : HAStore.wingWidth + 8
+            let wing = state.claudeBadge != nil ? NotchView.wing + 8 : PowerStore.shared.label != nil ? NotchView.chargeWing + 8 : HAStore.shared.wings.isEmpty ? 8 : HAStore.wingWidth + 8
             guard notchRect.insetBy(dx: -wing, dy: -2).contains(p) else { return }
             // Beim Ziehen von Dateien gleich die Ablage zeigen – außer der Transkript-Tab ist offen
             if dragging, state.tab != .transcribe, state.prefs.isOn(.shelf),

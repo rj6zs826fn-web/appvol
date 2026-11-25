@@ -5,7 +5,7 @@
 import SwiftUI
 
 enum Feature: String, CaseIterable, Identifiable {
-    case volume, outputDevice, media, claude, shelf, transcribe, safari, homeassistant
+    case volume, outputDevice, media, claude, shelf, transcribe, safari, homeassistant, charging
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .transcribe: "Transkript"
         case .safari: "Safari-MCP"
         case .homeassistant: "Home Assistant"
+        case .charging: "Ladeleistung"
         }
     }
 
@@ -32,6 +33,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .transcribe: "Video oder Audio auf die Notch ziehen → lokales Transkript (whisper.cpp)"
         case .safari: "Zeitschalter für einen lokalen Safari-MCP-Server"
         case .homeassistant: "Geräte und Sensoren aus deinem Home Assistant schalten und anzeigen"
+        case .charging: "Beim Laden die Leistung in Watt neben der Notch anzeigen"
         }
     }
 
@@ -46,19 +48,20 @@ enum Feature: String, CaseIterable, Identifiable {
         case .transcribe: "waveform"
         case .safari: "safari"
         case .homeassistant: "house"
+        case .charging: "bolt.fill"
         }
     }
 
     /// Ohne Einrichtung nutzlose Funktionen sind standardmäßig aus.
     var defaultOn: Bool {
         switch self {
-        case .volume, .outputDevice, .media, .shelf: true
+        case .volume, .outputDevice, .media, .shelf, .charging: true
         case .claude, .safari, .homeassistant, .transcribe: false
         }
     }
 
     /// Hat einen eigenen Tab im Panel (sonst nur Einstellungen / Anzeige neben der Notch).
-    var hasTab: Bool { self != .outputDevice }
+    var hasTab: Bool { self != .outputDevice && self != .charging }
 }
 
 /// Lokale Einstellungen (UserDefaults). Persönliche Werte landen nur hier, nie im Code.
