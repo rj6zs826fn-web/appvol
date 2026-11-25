@@ -444,6 +444,7 @@ final class NotchController {
     var panelRect = NSRect.zero
     var collapseAt: Date?
     var preview = false
+    var laidOut: (CGRect, CGSize)?
 
     init(state: AppState) {
         self.state = state
@@ -470,6 +471,9 @@ final class NotchController {
         if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea {
             notch = CGSize(width: f.width - l.width - r.width, height: screen.safeAreaInsets.top)
         }
+        // Space-Wechsel melden oft nur „Bildschirm geändert“: ohne neue Maße nichts neu bauen, sonst flackert die Notch
+        if let l = laidOut, l.0 == f, l.1 == notch { return }
+        laidOut = (f, notch)
         // Fenster etwas größer als das Panel, damit der Schatten Platz hat
         let win = CGSize(width: panelSize.width + 40, height: panelSize.height + 30)
         panel.setFrame(NSRect(x: f.midX - win.width / 2, y: f.maxY - win.height, width: win.width, height: win.height), display: true)
